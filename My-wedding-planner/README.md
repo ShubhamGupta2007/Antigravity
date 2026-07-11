@@ -1,6 +1,6 @@
 # Swayam2027 - Wedding Planner
 
-This is the Next.js and Supabase wedding planner dashboard application.
+This is the Next.js and Supabase wedding planner dashboard application for Swayam 2027.
 
 ## Getting Started
 
