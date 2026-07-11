@@ -1,4 +1,4 @@
-# Swayam2026 - Wedding Planner
+# Swayam2027 - Wedding Planner
 
 This is the Next.js and Supabase wedding planner dashboard application.
 
