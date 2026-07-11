@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Swayam2026 - Wedding Planner
+
+This is the Next.js and Supabase wedding planner dashboard application.
 
 ## Getting Started
 
