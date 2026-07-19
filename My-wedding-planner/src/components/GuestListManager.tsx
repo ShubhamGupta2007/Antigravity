@@ -16,13 +16,13 @@ type Family = {
   id: string
   family_name: string
   side: string
-  relation_tier: string
   expected_adults_count: number | null
   expected_kids_count: number | null
   is_local: boolean
   city: string | null
   contact_person: string | null
   contact_phone: string | null
+  relationship: string | null
   family_members: FamilyMember[]
 }
 
@@ -44,6 +44,7 @@ export default function GuestListManager({
   const [selectedTier, setSelectedTier] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({})
+  const [selectedRelationship, setSelectedRelationship] = useState<string>('all')
   
   // Set default active side based on userSide
   const [activeSide, setActiveSide] = useState<'groom' | 'bride'>(
@@ -79,7 +80,14 @@ export default function GuestListManager({
       }
     }
 
-    // 3. Search query filter
+    // 3. Relationship filter
+    if (selectedRelationship !== 'all') {
+      if ((f.relationship || '') !== selectedRelationship) {
+        return false
+      }
+    }
+
+    // 4. Search query filter
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase()
       const matchesFamilyName = f.family_name.toLowerCase().includes(query)
@@ -95,20 +103,89 @@ export default function GuestListManager({
   const canEditBride = role === 'admin'
   const canEditActive = activeSide === 'groom' ? canEditGroom : canEditBride
 
+  const uniqueRelationships = Array.from(new Set(initialFamilies
+    .filter(f => f.side === activeSide && (selectedTier === 'all' ? f.relation_tier !== 'tier_1' : f.relation_tier === selectedTier))
+    .map(f => f.relationship)
+    .filter(Boolean) as string[]
+  )).sort()
+
+  const isFilterActive = searchQuery.trim() !== '' || selectedRelationship !== 'all' || selectedTier !== 'all'
+  
+  let filterExpectedCount = 0
+  let filterAdults = 0
+  let filterKids = 0
+  let filterSeniors = 0
+  let filterOutstation = 0
+  
+  if (isFilterActive) {
+    filteredFamilies.forEach(f => {
+      const addedMembersCount = f.family_members?.length || 0
+      
+      let localAdults = 0
+      let localKids = 0
+      let localSeniors = 0
+      
+      if (addedMembersCount > 0) {
+        f.family_members?.forEach((m: FamilyMember) => {
+          if (m.age !== null) {
+            if (m.age < 12) localKids++
+            else if (m.age >= 60) localSeniors++
+            else localAdults++
+          } else {
+            localAdults++
+          }
+        })
+      }
+      
+      const expectedAdults = f.expected_adults_count || 1
+      const expectedKids = f.expected_kids_count || 0
+      
+      localKids += Math.max(0, expectedKids - localKids)
+      localAdults += Math.max(0, expectedAdults - localAdults - localSeniors)
+      
+      filterAdults += localAdults
+      filterKids += localKids
+      filterSeniors += localSeniors
+      
+      const familyTotal = localAdults + localKids + localSeniors
+      filterExpectedCount += familyTotal
+      
+      if (!f.is_local) {
+        filterOutstation += familyTotal
+      }
+    })
+  }
+
   return (
     <div className="space-y-6">
       {/* Category Navigation Tabs & Search */}
       <div className="bg-white/80 backdrop-blur-sm border border-marigold/20 rounded-2xl p-4 shadow-sm space-y-4">
-        {/* Search Input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-maroon/40" />
-          <input
-            type="text"
-            placeholder="Search family name, city, contact person, or member..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 pr-4 py-2 w-full text-sm bg-ivory rounded-xl border border-marigold/30 focus:border-marigold focus:ring-1 focus:ring-marigold outline-none text-maroon placeholder-maroon/40"
-          />
+        {/* Search Input & Relationship Filter */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-maroon/40" />
+            <input
+              type="text"
+              placeholder="Search family name, city, contact person, or member..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 w-full text-sm bg-ivory rounded-xl border border-marigold/30 focus:border-marigold focus:ring-1 focus:ring-marigold outline-none text-maroon placeholder-maroon/40"
+            />
+          </div>
+          
+          <select
+            value={selectedRelationship}
+            onChange={(e) => setSelectedRelationship(e.target.value)}
+            className="px-4 py-2 text-sm bg-ivory rounded-xl border border-marigold/30 focus:border-marigold focus:ring-1 focus:ring-marigold outline-none text-maroon min-w-[200px]"
+            disabled={uniqueRelationships.length === 0}
+          >
+            <option value="all">
+              {uniqueRelationships.length === 0 ? "No Relationships Added Yet" : "All Relationships"}
+            </option>
+            {uniqueRelationships.map(rel => (
+              <option key={rel} value={rel}>{rel}</option>
+            ))}
+          </select>
         </div>
 
         {/* Navigation Tabs */}
@@ -215,6 +292,29 @@ export default function GuestListManager({
         </div>
       </div>
 
+      {/* Dynamic Selection Summary (Only shown when a filter is active) */}
+      {isFilterActive && (
+        <div className="bg-marigold/10 border border-marigold/30 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-display font-semibold text-maroon uppercase tracking-wider bg-white/50 px-2.5 py-1 rounded-lg">Selection Stats</span>
+            <span className="text-sm font-bold text-maroon">{filterExpectedCount} Guests</span>
+            <span className="text-xs font-data text-maroon/60">({filteredFamilies.length} Families)</span>
+          </div>
+          <div className="flex items-center gap-4 text-xs font-data font-medium text-maroon">
+            <div className="flex gap-2.5">
+              {filterAdults > 0 && <span>🧑 <span className="font-bold">{filterAdults}</span></span>}
+              {filterKids > 0 && <span>🧸 <span className="font-bold">{filterKids}</span></span>}
+              {filterSeniors > 0 && <span>👵 <span className="font-bold">{filterSeniors}</span></span>}
+            </div>
+            {filterOutstation > 0 && (
+              <div className="border-l border-marigold/30 pl-4 text-rust-red flex items-center gap-1 font-semibold">
+                ✈️ {filterOutstation} outstation
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div>
         {filteredFamilies.length === 0 ? (
@@ -294,6 +394,9 @@ function GuestTable({
                       {family.relation_tier === 'tier_1' ? 'Hosts 👑' : 
                        family.relation_tier === 'tier_2' ? 'Close 🤝' : 'Extended 🏡'}
                     </span>
+                    {family.relationship && (
+                      <div className="mt-1.5 text-[10px] text-maroon/70 font-semibold uppercase tracking-wider">{family.relationship}</div>
+                    )}
                   </td>
                   <td className="p-4 text-maroon/70 font-normal">{family.city || '-'}</td>
                   <td className="p-4 text-xs">
@@ -356,12 +459,17 @@ function GuestTable({
                           {family.family_members && family.family_members.length > 0 ? (
                             <div className="flex flex-wrap gap-2 pt-1">
                               {family.family_members.map(member => (
-                                <div key={member.id} className="bg-white border border-marigold/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs">
+                                <div key={member.id} className="bg-white border border-marigold/20 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-2xs group">
                                   <span className="font-semibold text-maroon">{member.name}</span>
                                   <span className="text-maroon/50 text-[10px]">
                                     ({member.relation_to_head || 'Member'}
                                     {member.age ? `, ${member.age} yrs` : ''})
                                   </span>
+                                  {canEdit && (
+                                    <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                                      <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>
+                                    </Link>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -399,10 +507,15 @@ function FamilyCard({
         <div className="flex justify-between items-start mb-3">
           <div>
             <h3 className="text-lg font-display font-semibold text-maroon">{family.family_name}</h3>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
               <span className="text-xs bg-marigold/10 text-maroon border border-marigold/30 px-2 py-0.5 rounded-full font-data">
                 {TIER_LABELS[family.relation_tier] || family.relation_tier}
               </span>
+              {family.relationship && (
+                <span className="text-[10px] font-data bg-mehendi/10 text-mehendi border border-mehendi/20 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                  {family.relationship}
+                </span>
+              )}
               {family.city && <span className="text-xs font-data text-maroon/60">• {family.city}</span>}
               {!family.is_local && (
                 <span className="text-[10px] bg-rust-red/10 text-rust-red border border-rust-red/20 px-2 py-0.5 rounded-full font-data font-semibold">
@@ -434,6 +547,12 @@ function FamilyCard({
             {family.contact_phone && ` (${family.contact_phone})`}
           </div>
         )}
+        
+        {(family.expected_kids_count || 0) > 0 && (
+          <div className="mt-1 text-xs font-data text-maroon/70">
+            🧸 Kids Expected: <span className="font-semibold">{family.expected_kids_count}</span>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 border-t border-marigold/10 pt-3">
@@ -460,12 +579,19 @@ function FamilyCard({
             {family.family_members && family.family_members.length > 0 ? (
               <ul className="space-y-2">
                 {family.family_members.map(member => (
-                  <li key={member.id} className="flex justify-between text-sm font-data p-2 bg-ivory rounded-lg border border-marigold/10">
+                  <li key={member.id} className="flex justify-between items-center text-sm font-data p-2 bg-ivory rounded-lg border border-marigold/10 group">
                     <span className="text-maroon">{member.name}</span>
-                    <span className="text-maroon/60 text-xs flex items-center">
-                      {member.relation_to_head || 'Member'}
-                      {member.age ? `, ${member.age} yrs` : ''}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-maroon/60 text-xs flex items-center">
+                        {member.relation_to_head || 'Member'}
+                        {member.age ? `, ${member.age} yrs` : ''}
+                      </span>
+                      {canEdit && (
+                        <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>
+                        </Link>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

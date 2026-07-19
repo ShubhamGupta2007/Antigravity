@@ -38,6 +38,7 @@ function AddFamilyForm() {
   
   // Duplicate check states
   const [existingNames, setExistingNames] = useState<string[]>([])
+  const [existingRelationships, setExistingRelationships] = useState<string[]>([])
   const [familyNameVal, setFamilyNameVal] = useState('')
   
   const isDuplicate = existingNames.includes(familyNameVal.toLowerCase().trim())
@@ -84,9 +85,11 @@ function AddFamilyForm() {
 
   useEffect(() => {
     async function loadNames() {
-      const { data } = await supabase.from('families').select('family_name')
+      const { data } = await supabase.from('families').select('family_name, relationship')
       if (data) {
         setExistingNames(data.map(f => f.family_name.toLowerCase().trim()))
+        const rels = Array.from(new Set(data.map(f => f.relationship).filter(Boolean) as string[])).sort()
+        setExistingRelationships(rels)
       }
     }
     if (authorized) {
@@ -103,6 +106,7 @@ function AddFamilyForm() {
 
     const formData = new FormData(form)
     const familyName = formData.get('family_name') as string
+    const relationship = formData.get('relationship') as string
     const contactPerson = formData.get('contact_person') as string
     
     const { data: { user } } = await supabase.auth.getUser()
@@ -116,6 +120,7 @@ function AddFamilyForm() {
       .from('families')
       .insert({
         family_name: familyName,
+        relationship: relationship,
         side: side,
         relation_tier: relationTier,
         expected_adults_count: parseInt(formData.get('expected_adults_count') as string) || 1,
@@ -158,10 +163,12 @@ function AddFamilyForm() {
       const contactInput = form.querySelector('#contact_person') as HTMLInputElement
       const phoneInput = form.querySelector('#contact_phone') as HTMLInputElement
       const cityInput = form.querySelector('#city') as HTMLInputElement
+      const relationshipInput = form.querySelector('#relationship') as HTMLInputElement
       
       if (contactInput) contactInput.value = ''
       if (phoneInput) phoneInput.value = ''
       if (cityInput) cityInput.value = ''
+      if (relationshipInput) relationshipInput.value = ''
 
       setSuccessMsg(`Successfully added "${familyName}"!`)
       setExistingNames(prev => [...prev, familyName.toLowerCase().trim()])
@@ -223,6 +230,23 @@ function AddFamilyForm() {
               ⚠️ A family with this name already exists in the list.
             </p>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="relationship">Relationship (e.g. Friends to Dad, Maternal Family)</Label>
+          <Input 
+            id="relationship" 
+            name="relationship" 
+            list="relationships-list"
+            placeholder="e.g. Friends to Dad"
+            required 
+            className="bg-white border-marigold/50" 
+          />
+          <datalist id="relationships-list">
+            {existingRelationships.map(rel => (
+              <option key={rel} value={rel} />
+            ))}
+          </datalist>
         </div>
 
         {/* Side Selector Pills */}

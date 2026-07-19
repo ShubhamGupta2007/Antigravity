@@ -13,6 +13,7 @@ export default function AddFunctionPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [userSide, setUserSide] = useState<string | null>(null)
+  const [unallocatedBudget, setUnallocatedBudget] = useState<number | null>(null)
   
   const router = useRouter()
   const supabase = createBrowserClient(
@@ -21,7 +22,7 @@ export default function AddFunctionPage() {
   )
 
   useEffect(() => {
-    async function fetchUserSide() {
+    async function fetchData() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { data: dbUser } = await supabase.from('users').select('side').eq('id', user.id).single()
@@ -29,12 +30,35 @@ export default function AddFunctionPage() {
           setUserSide(dbUser.side)
         }
       }
+
+      // Fetch unallocated budget
+      const { data: configs } = await supabase.from('side_configurations').select('master_budget')
+      const masterTotal = (configs || []).reduce((sum, c) => sum + Number(c.master_budget), 0)
+
+      const { data: funcs } = await supabase.from('functions').select('max_budget')
+      const funcAlloc = (funcs || []).reduce((sum, f) => sum + Number(f.max_budget), 0)
+
+      const { data: cats } = await supabase.from('categories').select('allocated_amount').is('function_id', null)
+      const catAlloc = (cats || []).reduce((sum, c) => sum + Number(c.allocated_amount), 0)
+
+      setUnallocatedBudget(masterTotal - funcAlloc - catAlloc)
     }
-    fetchUserSide()
+    fetchData()
   }, [supabase])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    
+    // Extract form data before any async operations to prevent e.currentTarget from becoming null
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get('name') as string
+    const event_date = formData.get('event_date') as string
+    const start_time = formData.get('start_time') as string
+    const end_time = formData.get('end_time') as string
+    const location = formData.get('location') as string
+    const hosting_side = formData.get('hosting_side') as string
+    const max_budget = Number(formData.get('max_budget'))
+
     setLoading(true)
     setError(null)
 
@@ -44,15 +68,6 @@ export default function AddFunctionPage() {
       setLoading(false)
       return
     }
-
-    const formData = new FormData(e.currentTarget)
-    const name = formData.get('name') as string
-    const event_date = formData.get('event_date') as string
-    const start_time = formData.get('start_time') as string
-    const end_time = formData.get('end_time') as string
-    const location = formData.get('location') as string
-    const hosting_side = formData.get('hosting_side') as string
-    const max_budget = Number(formData.get('max_budget'))
 
     if (max_budget <= 0) {
       setError("Max budget is required.")
@@ -133,7 +148,19 @@ export default function AddFunctionPage() {
         <div className="space-y-2">
           <Label htmlFor="max_budget">Max Budget (₹) *</Label>
           <Input id="max_budget" name="max_budget" type="number" min="1" step="1" required className="bg-white border-marigold/50 text-lg" placeholder="0" />
-          <p className="text-xs text-maroon/50 font-data">Required to track expenses for this function.</p>
+          {unallocatedBudget !== null ? (
+            <div className="bg-marigold/10 p-3 rounded-lg border border-marigold/30 mt-2">
+              <p className="text-sm font-data font-semibold text-maroon flex items-center justify-between">
+                <span>Total Unallocated Budget:</span>
+                <span className={unallocatedBudget < 0 ? "text-rust-red" : "text-mehendi"}>₹{unallocatedBudget.toLocaleString('en-IN')}</span>
+              </p>
+              <p className="text-[10px] text-maroon/70 font-data mt-1 italic">
+                Allocating a budget here will draw from your total unallocated wedding budget and create a dedicated budget entry for this function.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-maroon/50 font-data">Required to track expenses for this function.</p>
+          )}
         </div>
 
         <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">

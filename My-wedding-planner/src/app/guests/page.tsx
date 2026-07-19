@@ -18,6 +18,7 @@ type Family = {
   family_name: string
   side: string
   relation_tier: string
+  relationship?: string | null
   expected_adults_count: number | null
   expected_kids_count: number | null
   is_local: boolean
@@ -81,48 +82,122 @@ export default async function GuestsPage() {
   const totalFamiliesCount = guestsFamilies.length
   
   let totalAdded = 0
-  let coreFamilyCount = 0     // tier_1 expected total
   let closeFamilyCount = 0    // tier_2 expected total
   let extendedFamilyCount = 0 // tier_3 expected total
   
-  let kidsCount = 0
+  let estimatedAdultsCount = 0
+  let estimatedKidsCount = 0
   let seniorsCount = 0
   
   let outstationFamiliesCount = 0
   let outstationExpectedCount = 0
+  let outstationAdultsCount = 0
+  let outstationKidsCount = 0
+  let outstationSeniorsCount = 0
 
   allFamilies.forEach(f => {
     // Only count added members for actually invited guests
     if (f.relation_tier !== 'tier_1') {
-      totalAdded += f.family_members?.length || 0
+      const addedMembersCount = f.family_members?.length || 0
       
-      f.family_members?.forEach((m: FamilyMember) => {
-        if (m.age !== null) {
-          if (m.age < 12) {
-            kidsCount++
-          } else if (m.age >= 60) {
-            seniorsCount++
+      let localAdults = 0
+      let localKids = 0
+      let localSeniors = 0
+
+      if (addedMembersCount > 0) {
+        f.family_members?.forEach((m: FamilyMember) => {
+          if (m.age !== null) {
+            if (m.age < 12) {
+              localKids++
+            } else if (m.age >= 60) {
+              localSeniors++
+            } else {
+              localAdults++
+            }
+          } else {
+            localAdults++
           }
-        }
-      })
+        })
+      }
+      
+      // Calculate remaining expected members
+      const expectedAdults = f.expected_adults_count || 1
+      const expectedKids = f.expected_kids_count || 0
+      
+      const remainingExpectedKids = Math.max(0, expectedKids - localKids)
+      // Seniors count against the adult quota
+      const remainingExpectedAdults = Math.max(0, expectedAdults - localAdults - localSeniors)
+
+      localAdults += remainingExpectedAdults
+      localKids += remainingExpectedKids
+
+      estimatedAdultsCount += localAdults
+      estimatedKidsCount += localKids
+      seniorsCount += localSeniors
 
       if (!f.is_local) {
         outstationFamiliesCount++
-        outstationExpectedCount += (f.expected_adults_count || 1) + (f.expected_kids_count || 0)
+        outstationExpectedCount += (localAdults + localKids + localSeniors)
+        outstationAdultsCount += localAdults
+        outstationKidsCount += localKids
+        outstationSeniorsCount += localSeniors
       }
     }
     
     const count = (f.expected_adults_count || 1) + (f.expected_kids_count || 0)
-    if (f.relation_tier === 'tier_1') {
-      coreFamilyCount += count
-    } else if (f.relation_tier === 'tier_2') {
+    if (f.relation_tier === 'tier_2') {
       closeFamilyCount += count
     } else if (f.relation_tier === 'tier_3') {
       extendedFamilyCount += count
     }
   })
+
+  const relationshipCounts: Record<string, { total: number, adults: number, kids: number, seniors: number, outstation: number }> = {}
   
-  const adultsCount = Math.max(0, totalAdded - kidsCount - seniorsCount)
+  allFamilies.forEach(f => {
+    if (f.relation_tier !== 'tier_1' && f.relationship) {
+      if (!relationshipCounts[f.relationship]) {
+        relationshipCounts[f.relationship] = { total: 0, adults: 0, kids: 0, seniors: 0, outstation: 0 }
+      }
+      
+      const addedMembersCount = f.family_members?.length || 0
+      let localAdults = 0
+      let localKids = 0
+      let localSeniors = 0
+      
+      if (addedMembersCount > 0) {
+        f.family_members?.forEach((m: FamilyMember) => {
+          if (m.age !== null) {
+            if (m.age < 12) localKids++
+            else if (m.age >= 60) localSeniors++
+            else localAdults++
+          } else {
+            localAdults++
+          }
+        })
+      }
+      
+      const expectedAdults = f.expected_adults_count || 1
+      const expectedKids = f.expected_kids_count || 0
+      
+      localKids += Math.max(0, expectedKids - localKids)
+      localAdults += Math.max(0, expectedAdults - localAdults - localSeniors)
+      
+      const familyTotal = localAdults + localKids + localSeniors
+      relationshipCounts[f.relationship].adults += localAdults
+      relationshipCounts[f.relationship].kids += localKids
+      relationshipCounts[f.relationship].seniors += localSeniors
+      relationshipCounts[f.relationship].total += familyTotal
+      
+      if (!f.is_local) {
+        relationshipCounts[f.relationship].outstation += familyTotal
+      }
+    }
+  })
+  
+  const topRelationships = Object.entries(relationshipCounts)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 5)
 
   return (
     <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">
@@ -139,89 +214,114 @@ export default async function GuestsPage() {
       </header>
 
       {/* Stats Dashboard Banner */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 w-full">
-        {/* Logistics & Headcount */}
-        <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-3">
-            📋 Logistics & Demographics
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-start text-sm font-data border-b border-marigold/10 pb-3 mb-2">
-              <span className="text-maroon/70 font-medium">Headcount Summary:</span>
-              <div className="text-right space-y-1">
-                <div className="font-bold text-maroon text-base">
-                  {totalExpected} Expected Guests
-                </div>
-                <div className="text-xs text-maroon/60">
-                  ({totalExpectedAdults} Adults + {totalExpectedKids} Kids)
-                </div>
-              </div>
+      <section className="flex flex-col gap-6 mb-8 w-full">
+        {/* Row 1: Key Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
+          {/* Card 1: Total Headcount */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Expected Headcount</span>
+            <span className="text-3xl font-display font-bold text-maroon">{totalExpected}</span>
+            <span className="text-xs text-maroon/60 font-data mt-1">{totalExpectedAdults} Adults, {totalExpectedKids} Kids</span>
+          </div>
+          
+          {/* Card 2: Demographics */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Demographics</span>
+            <div className="flex gap-3 text-sm font-data font-medium text-maroon mt-1">
+              <span className="flex flex-col items-center">🧑 <span className="text-lg font-bold">{estimatedAdultsCount}</span></span>
+              <span className="flex flex-col items-center">🧸 <span className="text-lg font-bold">{estimatedKidsCount}</span></span>
+              <span className="flex flex-col items-center">👵 <span className="text-lg font-bold">{seniorsCount}</span></span>
             </div>
-            
-            {/* Named/Added Guest Breakdown */}
-            <div className="space-y-1.5 pt-1">
-              <div className="text-[10px] text-maroon/50 uppercase tracking-wider font-semibold font-data">
-                Names Submitted ({totalAdded} of {totalExpected} added)
-              </div>
-              <div className="bg-ivory/60 border border-marigold/15 rounded-xl p-2.5 flex justify-around text-xs font-data text-maroon/80">
-                <span className="flex items-center font-medium">🧑 {adultsCount} Adults</span>
-                <span className="flex items-center font-medium">🧸 {kidsCount} Kids</span>
-                <span className="flex items-center font-medium">👵 {seniorsCount} Seniors</span>
-              </div>
-            </div>
-            
-            <div className="flex justify-between items-center text-sm font-data pt-2">
-              <span className="text-maroon/70">Families Invited (Cards needed):</span>
-              <span className="font-semibold text-maroon">{totalFamiliesCount} Families</span>
-            </div>
-            
-            <div className="flex justify-between items-center text-sm font-data border-t border-marigold/10 pt-2">
-              <span className="text-maroon/70">Outstation (Requires Accommodations):</span>
-              <span className="font-semibold text-maroon flex flex-col items-end">
-                <span>{outstationExpectedCount} Guests</span>
-                <span className="text-[10px] text-maroon/50 font-normal">({outstationFamiliesCount} Families)</span>
-              </span>
+            <span className="text-[9px] text-maroon/40 font-data mt-1.5">*auto-updates</span>
+          </div>
+
+          {/* Card 3: Total Families */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Families Invited</span>
+            <span className="text-3xl font-display font-bold text-maroon">{totalFamiliesCount}</span>
+            <span className="text-xs text-maroon/60 font-data mt-1">Cards Needed</span>
+          </div>
+
+          {/* Card 4: Outstation */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
+            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Outstation Guests</span>
+            <span className="text-3xl font-display font-bold text-maroon">{outstationExpectedCount}</span>
+            <span className="text-[10px] text-maroon/60 font-data mt-0.5 mb-1.5 font-semibold">{outstationFamiliesCount} Families</span>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {outstationAdultsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">🧑 {outstationAdultsCount}</span>}
+              {outstationKidsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">🧸 {outstationKidsCount}</span>}
+              {outstationSeniorsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">👵 {outstationSeniorsCount}</span>}
             </div>
           </div>
         </div>
 
-        {/* Tiers & Event Schedules */}
-        <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
-          <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-3">
-            🏠 Category Tiers (Headcount)
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-sm font-data">
-              <span className="flex items-center font-medium text-maroon">
-                Immediate Family (Hosts) 👑
-              </span>
-              <span className="font-bold text-maroon bg-marigold/20 px-2 py-0.5 rounded-full text-xs">
-                {coreFamilyCount} expected
-              </span>
+        {/* Row 2: Detailed Lists */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Relationships */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-4">
+              🔗 Top Relationships
+            </h3>
+            {topRelationships.length > 0 ? (
+              <div className="space-y-3">
+                {topRelationships.map(([rel, stats]) => (
+                  <div key={rel} className="flex justify-between items-center text-sm font-data border-b border-marigold/5 pb-3 last:border-0 last:pb-0">
+                    <span className="font-medium text-maroon truncate pr-4">{rel}</span>
+                    <div className="flex flex-col items-end">
+                      <span className="font-bold text-maroon bg-mehendi/10 text-mehendi px-2.5 py-0.5 rounded-full text-xs">
+                        {stats.total} guests
+                      </span>
+                      {stats.outstation > 0 && (
+                        <span className="text-[9px] font-data font-semibold text-rust-red bg-rust-red/5 border border-rust-red/10 px-2 py-0.5 rounded-full mt-1.5 mb-0.5">
+                          ✈️ {stats.outstation} outstation
+                        </span>
+                      )}
+                      <div className="flex gap-2 text-[10px] font-data text-maroon/60 mt-1 uppercase tracking-wider">
+                        {stats.adults > 0 && <span>🧑 {stats.adults}</span>}
+                        {stats.kids > 0 && <span>🧸 {stats.kids}</span>}
+                        {stats.seniors > 0 && <span>👵 {stats.seniors}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs font-data text-maroon/50 italic py-2 text-center">
+                No relationships added yet.
+              </div>
+            )}
+          </div>
+          
+          {/* Category Tiers */}
+          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm">
+            <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-4">
+              🏠 Category Tiers
+            </h3>
+            <div className="space-y-4">
+              <div className="bg-ivory/60 border border-marigold/15 rounded-xl p-3">
+                <div className="flex justify-between items-center text-sm font-data mb-1">
+                  <span className="font-medium text-maroon">Close Circle (Rishtedaar & Friends)</span>
+                  <span className="font-bold text-maroon bg-marigold/10 px-2 py-0.5 rounded-full text-xs">
+                    {closeFamilyCount} expected
+                  </span>
+                </div>
+                <p className="text-xs text-maroon/60 font-data italic">
+                  ↳ Attending Delhi Wedding (Jan 19) & Joint Functions.
+                </p>
+              </div>
+  
+              <div className="bg-ivory/60 border border-marigold/15 rounded-xl p-3">
+                <div className="flex justify-between items-center text-sm font-data mb-1">
+                  <span className="font-medium text-maroon">Extended Circle & Neighbors</span>
+                  <span className="font-bold text-maroon bg-marigold/5 px-2 py-0.5 rounded-full text-xs">
+                    {extendedFamilyCount} expected
+                  </span>
+                </div>
+                <p className="text-xs text-maroon/60 font-data italic">
+                  ↳ Local guests attending selected functions.
+                </p>
+              </div>
             </div>
-            <p className="text-[10px] text-maroon/60 font-data -mt-2 italic">
-              ↳ Attending Engagement in Muzaffarnagar (Jan 17) & Wedding in Delhi (Jan 19).
-            </p>
-
-            <div className="flex justify-between items-center text-sm font-data border-t border-marigold/10 pt-2">
-              <span className="font-medium text-maroon">Close Circle (Rishtedaar & Friends)</span>
-              <span className="font-bold text-maroon bg-marigold/10 px-2 py-0.5 rounded-full text-xs">
-                {closeFamilyCount} expected
-              </span>
-            </div>
-            <p className="text-[10px] text-maroon/60 font-data -mt-2 italic">
-              ↳ Attending Delhi Wedding (Jan 19) & Joint Functions.
-            </p>
-
-            <div className="flex justify-between items-center text-sm font-data border-t border-marigold/10 pt-2">
-              <span className="font-medium text-maroon">Extended Circle & Neighbors</span>
-              <span className="font-bold text-maroon bg-marigold/5 px-2 py-0.5 rounded-full text-xs">
-                {extendedFamilyCount} expected
-              </span>
-            </div>
-            <p className="text-[10px] text-maroon/60 font-data -mt-2 italic">
-              ↳ Local guests attending selected functions.
-            </p>
           </div>
         </div>
       </section>

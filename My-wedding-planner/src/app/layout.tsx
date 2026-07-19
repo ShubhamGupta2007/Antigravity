@@ -28,6 +28,9 @@ export const metadata: Metadata = {
   description: "Family Wedding Planner Dashboard for Swati & Satyam",
 };
 
+import { Toaster } from "sonner";
+import { SpeedInsights } from '@vercel/speed-insights/next';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -39,7 +42,11 @@ export default function RootLayout({
       className={cn("h-full", "antialiased", cormorant.variable, poppins.variable, dmSans.variable, "font-sans", geist.variable)}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans bg-ivory text-maroon" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col font-sans bg-ivory text-maroon" suppressHydrationWarning>
+        {children}
+        <Toaster position="bottom-right" richColors />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }

@@ -17,8 +17,10 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [existingRelationships, setExistingRelationships] = useState<string[]>([])
   const [formDataState, setFormDataState] = useState({
     family_name: '',
+    relationship: '',
     side: 'groom',
     relation_tier: 'tier_2',
     expected_adults_count: 1,
@@ -56,6 +58,13 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
       }
       setAuthorized(true)
 
+      // Fetch existing relationships for dropdown
+      const { data: relData } = await supabase.from('families').select('relationship')
+      if (relData) {
+        const rels = Array.from(new Set(relData.map(f => f.relationship).filter(Boolean) as string[])).sort()
+        setExistingRelationships(rels)
+      }
+
       // Fetch existing family details
       const { data: family, error: fetchError } = await supabase
         .from('families')
@@ -68,6 +77,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
       } else if (family) {
         setFormDataState({
           family_name: family.family_name || '',
+          relationship: family.relationship || '',
           side: family.side || 'groom',
           relation_tier: family.relation_tier || 'tier_2',
           expected_adults_count: family.expected_adults_count || 1,
@@ -100,6 +110,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
       .from('families')
       .update({
         family_name: formDataState.family_name,
+        relationship: formDataState.relationship,
         side: formDataState.side,
         relation_tier: formDataState.relation_tier,
         expected_adults_count: parseInt(formDataState.expected_adults_count as any) || 1,
@@ -181,6 +192,16 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
         <div className="space-y-2">
           <Label htmlFor="family_name">Family Name</Label>
           <Input id="family_name" name="family_name" value={formDataState.family_name} onChange={handleChange} required className="bg-white border-marigold/50" />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="relationship">Relationship (e.g. Friends to Dad, Maternal Family)</Label>
+          <Input id="relationship" name="relationship" list="edit-relationships-list" value={formDataState.relationship} onChange={handleChange} required placeholder="e.g. Friends to Dad" className="bg-white border-marigold/50" />
+          <datalist id="edit-relationships-list">
+            {existingRelationships.map(rel => (
+              <option key={rel} value={rel} />
+            ))}
+          </datalist>
         </div>
 
         <div className="space-y-2">
