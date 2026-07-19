@@ -39,7 +39,8 @@ export function LoginForm() {
     })
     
     if (error) {
-      setError(error.message)
+      const msg = typeof error.message === 'object' ? JSON.stringify(error.message) : error.message
+      setError(msg === '{}' ? 'Login failed. If you haven\'t created an account yet, please sign up first.' : msg)
       setLoading(false)
       return
     }
@@ -66,7 +67,8 @@ export function LoginForm() {
     })
     
     if (error) {
-      setError(error.message)
+      const msg = typeof error.message === 'object' ? JSON.stringify(error.message) : error.message
+      setError(msg === '{}' ? 'Failed to send magic link. The email server might be rate limited. Please try again later or sign in with a password.' : msg)
     } else {
       setMessage("Magic link sent! Check your email to sign in securely.")
     }
@@ -92,7 +94,8 @@ export function LoginForm() {
     })
     
     if (error) {
-      setError(error.message)
+      const msg = typeof error.message === 'object' ? JSON.stringify(error.message) : error.message
+      setError(msg === '{}' ? 'Signup failed. The email server might be rate-limited or misconfigured. Please try again later.' : msg)
     } else if (data?.user?.identities?.length === 0) {
       setError("An account with this email already exists. Please sign in instead.")
     } else {
