@@ -16,7 +16,7 @@ type Rule = {
   amount: number
   target_side: 'groom' | 'bride' | 'both'
   target_tier: 'tier_1' | 'tier_2' | 'tier_3' | 'all'
-  target_gender: 'Male' | 'Female' | 'Kids' | 'All'
+  target_gender: 'Male' | 'Female' | 'Kids' | 'Adults' | 'Seniors' | 'All'
 }
 
 export default function FunctionGiftingRules({
@@ -69,6 +69,10 @@ export default function FunctionGiftingRules({
             if (rule.target_gender === 'All') {
               matchCount += 1
             } else if (rule.target_gender === 'Kids' && mem.age !== null && mem.age < 12) {
+              matchCount += 1
+            } else if (rule.target_gender === 'Adults' && (mem.age === null || (mem.age >= 12 && mem.age < 60))) {
+              matchCount += 1
+            } else if (rule.target_gender === 'Seniors' && mem.age !== null && mem.age >= 60) {
               matchCount += 1
             } else if (rule.target_gender === 'Male' && mem.gender === 'Male') {
               matchCount += 1
@@ -179,7 +183,9 @@ export default function FunctionGiftingRules({
                 <option value="All">Everyone</option>
                 <option value="Male">Males Only</option>
                 <option value="Female">Females Only</option>
-                <option value="Kids">Kids Only</option>
+                <option value="Kids">Kids (&lt; 12 yrs)</option>
+                <option value="Adults">Adults (12-59 yrs)</option>
+                <option value="Seniors">Senior Citizens (60+ yrs)</option>
               </select>
             </div>
           </div>
