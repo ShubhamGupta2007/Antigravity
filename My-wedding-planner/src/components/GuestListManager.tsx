@@ -16,6 +16,7 @@ type Family = {
   id: string
   family_name: string
   side: string
+  relation_tier: string
   expected_adults_count: number | null
   expected_kids_count: number | null
   is_local: boolean
