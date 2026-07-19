@@ -18,7 +18,8 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
-  const [member, setMember] = useState<{ name: string, age: number | null, relation_to_head: string | null, gender: string } | null>(null)
+  const [member, setMember] = useState<{ name: string, age: number | null, relation_to_head: string | null, gender: string, is_kid_for_gifting: boolean } | null>(null)
+  const [familyName, setFamilyName] = useState<string | null>(null)
   
   const router = useRouter()
 
@@ -46,6 +47,9 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
         return
       } else {
         setAuthorized(true)
+        // Fetch family name
+        const { data: family } = await supabase.from('families').select('family_name').eq('id', familyId).single()
+        if (family) setFamilyName(family.family_name)
       }
 
       // Fetch member details
@@ -62,7 +66,8 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
           name: memberData.name,
           age: memberData.age,
           relation_to_head: memberData.relation_to_head,
-          gender: memberData.gender || 'Unknown'
+          gender: memberData.gender || 'Unknown',
+          is_kid_for_gifting: memberData.is_kid_for_gifting || false
         })
       }
       setFetching(false)
@@ -85,7 +90,8 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
         name: formData.get('name'),
         age: age ? parseInt(age as string) : null,
         relation_to_head: formData.get('relation_to_head'),
-        gender: formData.get('gender') || 'Unknown'
+        gender: formData.get('gender') || 'Unknown',
+        is_kid_for_gifting: formData.get('is_kid_for_gifting') === 'on'
       })
       .eq('id', memberId)
 
@@ -127,7 +133,9 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
             <ArrowLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-display font-semibold text-maroon">Edit Member</h1>
+        <h1 className="text-2xl font-display font-semibold text-maroon">
+          Edit Member {familyName ? `in ${familyName.toLowerCase().endsWith('family') ? familyName : `${familyName} Family`}` : ''}
+        </h1>
       </header>
 
       {error && <div className="p-4 mb-6 bg-rust-red/10 border border-rust-red/20 text-rust-red rounded-lg text-sm">{error}</div>}
@@ -162,6 +170,20 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
             <option value="Female">Female</option>
             <option value="Other">Other</option>
           </select>
+        </div>
+
+        <div className="flex items-center space-x-2 bg-marigold/10 p-4 rounded-md border border-marigold/30">
+          <input 
+            type="checkbox" 
+            id="is_kid_for_gifting" 
+            name="is_kid_for_gifting" 
+            defaultChecked={member?.is_kid_for_gifting}
+            className="h-4 w-4 rounded border-marigold/50 text-maroon focus:ring-maroon accent-maroon"
+          />
+          <div className="space-y-1 leading-none">
+            <Label htmlFor="is_kid_for_gifting" className="font-semibold text-maroon cursor-pointer">Treat as Kid for Gifting</Label>
+            <p className="text-xs text-maroon/60 font-data">Check this if the member should not receive an individual gift/lifafa (e.g. unmarried children of the family).</p>
+          </div>
         </div>
 
         <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">

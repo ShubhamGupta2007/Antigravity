@@ -185,7 +185,9 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
             <ArrowLeft className="w-5 h-5" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-display font-semibold text-maroon">Edit Family</h1>
+        <h1 className="text-2xl font-display font-semibold text-maroon">
+          Edit {formDataState.family_name ? (formDataState.family_name.toLowerCase().endsWith('family') ? formDataState.family_name : `${formDataState.family_name} Family`) : 'Family'}
+        </h1>
       </header>
 
       {error && <div className="p-4 mb-6 bg-rust-red/10 border border-rust-red/20 text-rust-red rounded-lg text-sm">{error}</div>}

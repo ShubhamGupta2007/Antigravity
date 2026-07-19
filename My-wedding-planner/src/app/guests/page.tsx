@@ -13,6 +13,7 @@ type FamilyMember = {
   age: number | null
   relation_to_head: string | null
   gender: string
+  is_kid_for_gifting: boolean
 }
 
 type Family = {

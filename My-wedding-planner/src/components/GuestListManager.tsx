@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Fragment } from 'react'
+import { useState, Fragment, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus, Search, ChevronDown, ChevronUp, Plus, CalendarDays, Settings, Edit2 } from 'lucide-react'
@@ -11,6 +11,7 @@ type FamilyMember = {
   age: number | null
   relation_to_head: string | null
   gender: string
+  is_kid_for_gifting: boolean
 }
 
 type Family = {
@@ -82,15 +83,37 @@ export default function GuestListManager({
   role: string
   userSide?: string
 }) {
-  const [selectedTier, setSelectedTier] = useState<string>('all')
+  const [selectedTier, setSelectedTier] = useState<string>(() => {
+    if (typeof window !== 'undefined') return sessionStorage.getItem('guestList_selectedTier') || 'all'
+    return 'all'
+  })
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [expandedFamilies, setExpandedFamilies] = useState<Record<string, boolean>>({})
-  const [selectedRelationship, setSelectedRelationship] = useState<string>('all')
+  const [selectedRelationship, setSelectedRelationship] = useState<string>(() => {
+    if (typeof window !== 'undefined') return sessionStorage.getItem('guestList_selectedRelationship') || 'all'
+    return 'all'
+  })
   
   // Set default active side based on userSide
-  const [activeSide, setActiveSide] = useState<'groom' | 'bride'>(
-    userSide === 'bride' ? 'bride' : 'groom'
-  )
+  const [activeSide, setActiveSide] = useState<'groom' | 'bride'>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('guestList_activeSide')
+      if (stored === 'groom' || stored === 'bride') return stored
+    }
+    return userSide === 'bride' ? 'bride' : 'groom'
+  })
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') sessionStorage.setItem('guestList_selectedTier', selectedTier)
+  }, [selectedTier])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') sessionStorage.setItem('guestList_selectedRelationship', selectedRelationship)
+  }, [selectedRelationship])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') sessionStorage.setItem('guestList_activeSide', activeSide)
+  }, [activeSide])
   
   // Set default view mode to 'table'
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')

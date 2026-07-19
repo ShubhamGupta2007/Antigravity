@@ -10,6 +10,8 @@ type FamilyMember = {
   name: string
   age: number | null
   relation_to_head: string | null
+  gender: string
+  is_kid_for_gifting: boolean
 }
 
 export default async function GuestAnalyticsPage() {

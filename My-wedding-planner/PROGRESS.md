@@ -76,3 +76,6 @@ If you are picking up this project, here is exactly what needs to happen next:
 - (2026-07-18) Resolved atomic database deletion constraints on Budget Categories, displaying graceful toast errors when attempting to delete categories with active expenses.
 - (2026-07-18) Integrated `sonner` for global popup toast notifications.
 - (2026-07-18) Added dynamic unallocated budget usage calculator to `/functions/add` and explicit "Events vs Categories" UI guidance banners on `/budget/setup`.
+- (2026-07-19) Implemented Family-level Room tracking logic inside `ManageInvitesClient.tsx` with dedicated database columns and real-time floating save banners.
+- (2026-07-19) Resolved `function_gifting_rules` check constraints to properly handle gender/age target groupings in the database layer.
+- (2026-07-19) Refined Auto-Invite helpers with interactive `window.confirm` dialogues and toggle functionality.

@@ -57,6 +57,9 @@ export default async function ManageInvitesPage({ params }: PageProps) {
     city,
     expected_adults_count,
     expected_kids_count,
+    needs_room,
+    rooms_assigned,
+    room_numbers,
     family_members (id, name, relation_to_head)
   `)
 

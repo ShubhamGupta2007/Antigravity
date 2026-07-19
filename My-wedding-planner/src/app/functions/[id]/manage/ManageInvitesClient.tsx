@@ -10,7 +10,8 @@ import { Check, Search, Sparkles, UserCheck } from 'lucide-react'
 type FamilyMember = {
   id: string
   name: string
-  relation_to_head: string
+  relation_to_head: string | null
+  is_kid_for_gifting: boolean
 }
 
 type Family = {
@@ -23,6 +24,9 @@ type Family = {
   city?: string | null
   expected_adults_count?: number
   expected_kids_count?: number
+  needs_room?: boolean
+  rooms_assigned?: number
+  room_numbers?: string
   family_members: FamilyMember[]
 }
 
@@ -69,6 +73,19 @@ export default function ManageInvitesClient({
     return map
   })
 
+  // State to optimistically manage room requirements before refresh
+  const [roomsState, setRoomsState] = useState<Record<string, { needs_room: boolean; rooms_assigned: number; room_numbers: string }>>(() => {
+    const map: Record<string, any> = {}
+    families.forEach(f => {
+      map[f.id] = {
+        needs_room: f.needs_room || false,
+        rooms_assigned: f.rooms_assigned || 0,
+        room_numbers: f.room_numbers || ''
+      }
+    })
+    return map
+  })
+
   const router = useRouter()
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,16 +109,47 @@ export default function ManageInvitesClient({
     setHasUnsavedChanges(true)
   }
 
+  const handleRoomChange = (familyId: string, field: string, value: any) => {
+    const currentState = roomsState[familyId] || { needs_room: false, rooms_assigned: 0, room_numbers: '' }
+    const updatedState = { ...currentState, [field]: value }
+    
+    // Automatically assign 1 room if they toggle needs_room to true and it was 0
+    if (field === 'needs_room' && value === true && updatedState.rooms_assigned === 0) {
+      updatedState.rooms_assigned = 1
+    }
+    
+    setRoomsState(prev => ({ ...prev, [familyId]: updatedState }))
+    setHasUnsavedChanges(true)
+  }
+
   const handleAutoInviteTier = (tier: 'tier_1' | 'tier_2' | 'tier_3') => {
     const targetFamilies = families.filter(f => f.relation_tier === tier)
-    if (targetFamilies.length === 0) return
+    
+    const tierName = tier === 'tier_1' ? 'Hosts' : tier === 'tier_2' ? 'Close Circle' : 'Extended Families'
+    
+    if (targetFamilies.length === 0) {
+      alert(`You don't have any families added to the ${tierName} tier yet.`)
+      return
+    }
+
+    // Check if all members of these families are already invited
+    const allAlreadyInvited = targetFamilies.every(f => {
+      const familyChecked = attendanceMap[`${f.id}-family`]
+      const membersChecked = f.family_members.length === 0 || f.family_members.every(m => attendanceMap[`${f.id}-${m.id}`])
+      return familyChecked || membersChecked
+    })
+
+    const actionText = allAlreadyInvited ? 'UNINVITE' : 'INVITE'
+    const isConfirmed = window.confirm(`Are you sure you want to ${actionText} all ${tierName} for this function?`)
+    
+    if (!isConfirmed) return
 
     const updatedMap = { ...attendanceMap }
 
     targetFamilies.forEach(f => {
-      updatedMap[`${f.id}-family`] = true
+      updatedMap[`${f.id}-family`] = !allAlreadyInvited
       f.family_members.forEach(m => {
-        updatedMap[`${f.id}-${m.id}`] = true
+        updatedMap[`${f.id}-${m.id}`] = !allAlreadyInvited
       })
     })
 
@@ -109,7 +157,7 @@ export default function ManageInvitesClient({
     setHasUnsavedChanges(true)
   }
 
-  const handleSaveChanges = async () => {
+  const handleSaveChanges = async (exitAfterSave = false) => {
     setSaving(true)
     try {
       const upserts: any[] = []
@@ -149,8 +197,36 @@ export default function ManageInvitesClient({
         await q
       }
 
+      // Update room assignments
+      const roomUpdates = families.filter(f => {
+        const state = roomsState[f.id]
+        if (!state) return false
+        return state.needs_room !== (f.needs_room || false) || 
+               state.rooms_assigned !== (f.rooms_assigned || 0) || 
+               state.room_numbers !== (f.room_numbers || '')
+      }).map(f => ({
+        id: f.id,
+        needs_room: roomsState[f.id].needs_room,
+        rooms_assigned: roomsState[f.id].rooms_assigned,
+        room_numbers: roomsState[f.id].room_numbers
+      }))
+
+      if (roomUpdates.length > 0) {
+        for (const update of roomUpdates) {
+          await supabase.from('families').update({
+            needs_room: update.needs_room,
+            rooms_assigned: update.rooms_assigned,
+            room_numbers: update.room_numbers
+          }).eq('id', update.id)
+        }
+      }
+
       setHasUnsavedChanges(false)
-      router.refresh()
+      if (exitAfterSave) {
+        router.push(`/functions/${func.id}`)
+      } else {
+        router.refresh()
+      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -180,6 +256,7 @@ export default function ManageInvitesClient({
   let kidsInvited = 0
   let seniorsInvited = 0
   let outstationInvited = 0
+  let totalRooms = 0
 
   families.forEach(f => {
     let localAdults = 0
@@ -232,6 +309,11 @@ export default function ManageInvitesClient({
       if (!f.is_local) {
         outstationInvited += familyTotal
       }
+
+      const rState = roomsState[f.id]
+      if (rState?.needs_room) {
+        totalRooms += (rState.rooms_assigned || 0)
+      }
     }
   })
 
@@ -268,8 +350,8 @@ export default function ManageInvitesClient({
           <div className="text-center bg-white/50 p-2.5 rounded-lg border border-white/60 min-w-[90px]">
             <div className="text-sm font-bold text-maroon flex items-center justify-center"><span className="text-xs mr-1">✈️</span> {outstationInvited}</div>
             <div className="text-[9px] font-data text-maroon/60 uppercase">Outstation</div>
-            {outstationInvited > 0 && (
-              <div className="text-[8px] font-data text-marigold-dark font-bold uppercase mt-0.5">~{Math.ceil(outstationInvited / 2)} Rooms</div>
+            {totalRooms > 0 && (
+              <div className="text-[8px] font-data text-marigold-dark font-bold uppercase mt-0.5">{totalRooms} Rooms</div>
             )}
           </div>
         </div>
@@ -280,14 +362,6 @@ export default function ManageInvitesClient({
           <Sparkles className="w-4 h-4 mr-1 text-marigold" /> Auto-Invite Helpers
         </h3>
         <div className="grid grid-cols-2 gap-2">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="border-marigold/50 text-maroon hover:bg-marigold/10 text-xs"
-            onClick={() => handleAutoInviteTier('tier_1')}
-          >
-            👑 Invite All Hosts
-          </Button>
           <Button 
             size="sm" 
             variant="outline" 
@@ -449,6 +523,46 @@ export default function ManageInvitesClient({
                   )}
                 </div>
 
+                {/* Room Needs Section */}
+                <div className="bg-marigold/5 rounded-lg p-3 border border-marigold/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-maroon flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox"
+                        checked={roomsState[family.id]?.needs_room || false}
+                        onChange={(e) => handleRoomChange(family.id, 'needs_room', e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-marigold/50 text-maroon focus:ring-maroon accent-maroon mr-2 cursor-pointer"
+                      />
+                      🏨 Requires Accommodation
+                    </label>
+                  </div>
+                  
+                  {roomsState[family.id]?.needs_room && (
+                    <div className="flex items-center gap-3 pl-5 pt-1 animate-in fade-in slide-in-from-top-1">
+                      <div className="space-y-1 w-1/3">
+                        <label className="text-[10px] uppercase font-bold text-maroon/60">Rooms Needed</label>
+                        <Input 
+                          type="number" 
+                          min={1}
+                          value={roomsState[family.id]?.rooms_assigned || ''}
+                          onChange={(e) => handleRoomChange(family.id, 'rooms_assigned', parseInt(e.target.value) || 0)}
+                          className="h-7 text-xs bg-white border-marigold/30"
+                        />
+                      </div>
+                      <div className="space-y-1 w-2/3">
+                        <label className="text-[10px] uppercase font-bold text-maroon/60">Room Number(s) Assigned</label>
+                        <Input 
+                          type="text" 
+                          placeholder="e.g. 101, 102"
+                          value={roomsState[family.id]?.room_numbers || ''}
+                          onChange={(e) => handleRoomChange(family.id, 'room_numbers', e.target.value)}
+                          className="h-7 text-xs bg-white border-marigold/30"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Family Members Checklist */}
                 {family.family_members.length === 0 ? (
                   <p className="text-xs text-maroon/40 italic pl-6">No members added to this family card yet.</p>
@@ -484,14 +598,25 @@ export default function ManageInvitesClient({
         {hasUnsavedChanges && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-maroon text-ivory px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(110,24,24,0.4)] flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5 font-bold border border-marigold/30">
             <span className="text-sm whitespace-nowrap">⚠️ You have unsaved changes!</span>
-            <Button 
-              size="sm" 
-              onClick={handleSaveChanges} 
-              disabled={saving}
-              className="bg-marigold text-maroon hover:bg-marigold/90 h-8 font-semibold rounded-full px-6 transition-transform active:scale-95"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handleSaveChanges(false)} 
+                disabled={saving}
+                className="border-marigold text-ivory hover:bg-marigold/10 hover:text-ivory h-8 font-semibold rounded-full px-4 transition-transform active:scale-95 bg-transparent"
+              >
+                {saving ? 'Saving...' : 'Save & Continue'}
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={() => handleSaveChanges(true)} 
+                disabled={saving}
+                className="bg-marigold text-maroon hover:bg-marigold/90 h-8 font-semibold rounded-full px-6 transition-transform active:scale-95"
+              >
+                {saving ? 'Saving...' : 'Save & Exit'}
+              </Button>
+            </div>
           </div>
         )}
       </section>

@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
-import { Gift, Plus, Trash2, IndianRupee } from 'lucide-react'
+import { Gift, Plus, Trash2, IndianRupee, Edit2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -31,8 +31,10 @@ export default function FunctionGiftingRules({
   members: any[] // individual members
 }) {
   const [rules, setRules] = useState<Rule[]>(initialRules)
-  const [isAdding, setIsAdding] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingRule, setEditingRule] = useState<Rule | null>(null)
   const [loading, setLoading] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,11 +70,11 @@ export default function FunctionGiftingRules({
             const mem = m.family_members
             if (rule.target_gender === 'All') {
               matchCount += 1
-            } else if (rule.target_gender === 'Kids' && mem.age !== null && mem.age < 12) {
+            } else if (rule.target_gender === 'Kids' && (mem.is_kid_for_gifting || (mem.age !== null && mem.age < 12))) {
               matchCount += 1
-            } else if (rule.target_gender === 'Adults' && (mem.age === null || (mem.age >= 12 && mem.age < 60))) {
+            } else if (rule.target_gender === 'Adults' && !mem.is_kid_for_gifting && (mem.age === null || (mem.age >= 12 && mem.age < 60))) {
               matchCount += 1
-            } else if (rule.target_gender === 'Seniors' && mem.age !== null && mem.age >= 60) {
+            } else if (rule.target_gender === 'Seniors' && !mem.is_kid_for_gifting && (mem.age !== null && mem.age >= 60)) {
               matchCount += 1
             } else if (rule.target_gender === 'Male' && mem.gender === 'Male') {
               matchCount += 1
@@ -94,7 +96,19 @@ export default function FunctionGiftingRules({
     setLoading(false)
   }
 
-  const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+  const openAddModal = () => {
+    setEditingRule(null)
+    setSubmitError(null)
+    setIsModalOpen(true)
+  }
+
+  const openEditModal = (rule: Rule) => {
+    setEditingRule(rule)
+    setSubmitError(null)
+    setIsModalOpen(true)
+  }
+
+  const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     const formData = new FormData(e.currentTarget)
@@ -109,12 +123,28 @@ export default function FunctionGiftingRules({
       target_gender: formData.get('target_gender') as string
     }
 
-    const { data, error } = await supabase.from('function_gifting_rules').insert(newRule).select().single()
-    if (data) {
-      setRules([...rules, data])
-      setIsAdding(false)
+    if (editingRule) {
+      // Update
+      const { data, error } = await supabase.from('function_gifting_rules').update(newRule).eq('id', editingRule.id).select().single()
+      if (error) {
+        console.error(error)
+        setSubmitError(error.message)
+      } else if (data) {
+        setRules(rules.map(r => r.id === editingRule.id ? data : r))
+        setIsModalOpen(false)
+        setSubmitError(null)
+      }
     } else {
-      console.error(error)
+      // Insert
+      const { data, error } = await supabase.from('function_gifting_rules').insert(newRule).select().single()
+      if (error) {
+        console.error(error)
+        setSubmitError(error.message)
+      } else if (data) {
+        setRules([...rules, data])
+        setIsModalOpen(false)
+        setSubmitError(null)
+      }
     }
     setLoading(false)
   }
@@ -125,76 +155,93 @@ export default function FunctionGiftingRules({
         <h2 className="text-xl font-display font-semibold text-maroon flex items-center">
           <Gift className="w-5 h-5 mr-2 text-maroon" /> Gifting & Lifafas
         </h2>
-        {!isAdding && (
-          <Button size="sm" onClick={() => setIsAdding(true)} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
+        {!isModalOpen && (
+          <Button size="sm" onClick={openAddModal} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
             <Plus className="w-4 h-4 mr-1" /> Add Rule
           </Button>
         )}
       </div>
 
-      {isAdding && (
-        <form onSubmit={handleAdd} className="bg-ivory/50 p-4 rounded-xl border border-marigold/30 mb-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Rule Name</Label>
-              <Input name="rule_name" placeholder="e.g. Milni Gents" required className="bg-white border-marigold/50 text-sm" />
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-maroon/20 backdrop-blur-sm">
+          <div className="bg-ivory w-full max-w-lg rounded-2xl border border-marigold/30 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-marigold/10 bg-white flex justify-between items-center">
+              <h3 className="font-display font-bold text-maroon text-lg">{editingRule ? 'Edit Gifting Rule' : 'Add New Gifting Rule'}</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-maroon/50 hover:text-maroon">
+                ✕
+              </button>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Type</Label>
-              <select name="type" className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                <option value="lifafa">Lifafa (Cash)</option>
-                <option value="return_gift">Return Gift</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Distribution</Label>
-              <select name="distribution" className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                <option value="per_person">Per Person</option>
-                <option value="per_family">Per Family</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Amount / Cost (₹)</Label>
-              <Input name="amount" type="number" required placeholder="500" className="bg-white border-marigold/50 text-sm" />
-            </div>
-            
-            <div className="col-span-2 text-xs font-semibold text-maroon/50 uppercase mt-2">Target Filters</div>
-            
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Side</Label>
-              <select name="target_side" className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                <option value="both">Both Sides</option>
-                <option value="groom">Groom's Side</option>
-                <option value="bride">Bride's Side</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Tier</Label>
-              <select name="target_tier" className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                <option value="all">All Tiers</option>
-                <option value="tier_1">Hosts / Immediate</option>
-                <option value="tier_2">Close Circle</option>
-                <option value="tier_3">Extended</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-maroon">Gender / Age</Label>
-              <select name="target_gender" className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                <option value="All">Everyone</option>
-                <option value="Male">Males Only</option>
-                <option value="Female">Females Only</option>
-                <option value="Kids">Kids (&lt; 12 yrs)</option>
-                <option value="Adults">Adults (12-59 yrs)</option>
-                <option value="Seniors">Senior Citizens (60+ yrs)</option>
-              </select>
-            </div>
+            <form onSubmit={handleSave} className="p-5 space-y-4">
+              {submitError && (
+                <div className="p-3 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded-lg font-data font-semibold">
+                  Error saving rule: {submitError}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Rule Name</Label>
+                  <Input name="rule_name" defaultValue={editingRule?.rule_name} placeholder="e.g. Milni Gents" required className="bg-white border-marigold/50 text-sm h-10" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Type</Label>
+                  <select name="type" defaultValue={editingRule?.type || 'lifafa'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
+                    <option value="lifafa">Lifafa (Cash)</option>
+                    <option value="return_gift">Return Gift</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Distribution</Label>
+                  <select name="distribution" defaultValue={editingRule?.distribution || 'per_person'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
+                    <option value="per_person">Per Person</option>
+                    <option value="per_family">Per Family</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Amount / Cost (₹)</Label>
+                  <Input name="amount" type="number" defaultValue={editingRule?.amount} required placeholder="500" className="bg-white border-marigold/50 text-sm h-10" />
+                </div>
+                
+                <div className="col-span-2 text-xs font-bold text-maroon/50 uppercase mt-4 border-b border-marigold/20 pb-1">Target Filters</div>
+                
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Side</Label>
+                  <select name="target_side" defaultValue={editingRule?.target_side || 'both'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
+                    <option value="both">Both Sides</option>
+                    <option value="groom">Groom's Side</option>
+                    <option value="bride">Bride's Side</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Tier</Label>
+                  <select name="target_tier" defaultValue={editingRule?.target_tier || 'all'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
+                    <option value="all">All Tiers</option>
+                    <option value="tier_1">Hosts / Immediate</option>
+                    <option value="tier_2">Close Circle</option>
+                    <option value="tier_3">Extended</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-maroon font-semibold">Gender / Age</Label>
+                  <select name="target_gender" defaultValue={editingRule?.target_gender || 'All'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
+                    <option value="All">Everyone</option>
+                    <option value="Male">Males Only</option>
+                    <option value="Female">Females Only</option>
+                    <option value="Kids">Kids</option>
+                    <option value="Adults">Adults</option>
+                    <option value="Seniors">Senior Citizens</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-6">
+                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="border-marigold/30 text-maroon">Cancel</Button>
+                <Button type="submit" disabled={loading} className="bg-maroon text-ivory min-w-[120px]">
+                  {loading ? 'Saving...' : (editingRule ? 'Update Rule' : 'Save Rule')}
+                </Button>
+              </div>
+            </form>
           </div>
-          
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setIsAdding(false)}>Cancel</Button>
-            <Button type="submit" size="sm" disabled={loading} className="bg-maroon text-ivory">Save Rule</Button>
-          </div>
-        </form>
+        </div>
       )}
 
       {rules.length === 0 ? (
@@ -228,14 +275,24 @@ export default function FunctionGiftingRules({
                       Total: ₹{total.toLocaleString('en-IN')}
                     </div>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => handleDelete(rule.id)}
-                    className="text-rust-red/50 hover:text-rust-red hover:bg-rust-red/10 h-8 w-8"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => openEditModal(rule)}
+                      className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => handleDelete(rule.id)}
+                      className="text-rust-red/50 hover:text-rust-red hover:bg-rust-red/10 h-8 w-8"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             )

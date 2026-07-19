@@ -42,10 +42,12 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   const { data: attendance, error: attendanceError } = await supabase
     .from('function_attendance')
     .select(`
-      id,
       family_id,
       member_id,
-      families (family_name, side, expected_adults_count, expected_kids_count, is_local, relation_tier),
+      families (
+        id, family_name, expected_adults_count, expected_kids_count, is_local, side, relation_tier, city, needs_room, rooms_assigned, room_numbers,
+        family_members (id, name, age, gender)
+      ),
       family_members (name, age, gender)
     `)
     .eq('function_id', func.id)
@@ -93,18 +95,29 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   let outstationCount = 0
   let roomsRequired = 0
 
-  attendingFamilyCards.forEach(fc => {
-    const familyDetails = fc.families as any
-    const members = attendingMembers.filter(m => m.family_id === fc.family_id)
+  const attendingFamilyIds = Array.from(new Set(attendance?.map(a => a.family_id) || []))
+
+  attendingFamilyIds.forEach(familyId => {
+    const familyAttendances = (attendance || []).filter(a => a.family_id === familyId)
+    const isFamilyInvited = familyAttendances.some(a => a.member_id === null)
+    const explicitlyInvitedMembers = familyAttendances.filter(a => a.member_id !== null)
+    
+    // get familyDetails from the first attendance row
+    const familyDetails = familyAttendances[0].families as any
+    const allFamilyMembers = familyDetails?.family_members || []
+    
+    const membersToCount = isFamilyInvited ? allFamilyMembers : explicitlyInvitedMembers.map((m: any) => m.family_members)
     
     let localAdults = 0
     let localKids = 0
     let localSeniors = 0
 
-    if (members.length > 0) {
-      members.forEach((m: any) => {
-        const age = m.family_members?.age
-        const gender = m.family_members?.gender
+    if (membersToCount.length > 0) {
+      membersToCount.forEach((mem: any) => {
+        if (!mem) return;
+        const age = mem.age
+        const gender = mem.gender
+        
         if (age !== null && age !== undefined) {
           if (age < 12) localKids++
           else if (age >= 60) localSeniors++
@@ -116,12 +129,15 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
         if (gender === 'Male') estimatedMales++
         else if (gender === 'Female') estimatedFemales++
       })
-    } else {
-      localAdults = familyDetails?.expected_adults_count || 1
-      localKids = familyDetails?.expected_kids_count || 0
+    }
+    
+    // If the family level is invited, pad the numbers with expected counts
+    if (isFamilyInvited) {
+      const expectedAdults = familyDetails?.expected_adults_count || 1
+      const expectedKids = familyDetails?.expected_kids_count || 0
       
-      // If no members are explicitly added, we can't accurately estimate gender
-      // We could split adults 50/50, but let's leave it to explicit members for accuracy.
+      localKids += Math.max(0, expectedKids - localKids)
+      localAdults += Math.max(0, expectedAdults - localAdults - localSeniors)
     }
 
     estimatedAdults += localAdults
@@ -130,7 +146,10 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
 
     if (familyDetails?.is_local === false) {
       outstationCount += (localAdults + localKids + localSeniors)
-      roomsRequired += Math.max(1, Math.ceil((localAdults + localSeniors) / 2))
+    }
+    
+    if (familyDetails?.needs_room) {
+      roomsRequired += (familyDetails?.rooms_assigned || 0)
     }
   })
   
