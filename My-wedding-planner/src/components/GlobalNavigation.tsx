@@ -71,9 +71,14 @@ export default function GlobalNavigation() {
           <div className="w-10 h-10 bg-maroon rounded-full flex items-center justify-center text-ivory font-display text-xl shadow-md shrink-0">
             S
           </div>
-          <span className="ml-3 font-display font-bold text-lg text-maroon truncate">
-            Swati & Satyam
-          </span>
+          <div className="ml-3 flex flex-col overflow-hidden">
+            <span className="font-display font-bold text-lg text-maroon truncate leading-tight">
+              Swati & Satyam
+            </span>
+            <span className="text-[10px] font-data text-maroon/60 tracking-widest uppercase mt-0.5">
+              #Swayam2027
+            </span>
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col gap-2 px-4 py-6 mt-4">

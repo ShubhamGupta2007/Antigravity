@@ -124,15 +124,8 @@ export default function BudgetSettingsPage() {
   if (loading) return <div className="min-h-screen p-6 flex items-center justify-center">Loading...</div>
 
   return (
-    <main className="min-h-screen flex flex-col p-6 max-w-lg mx-auto bg-ivory pb-24">
-      <header className="flex items-center space-x-4 py-4 border-b border-marigold/30 mb-6">
-        <Link href="/budget">
-          <Button variant="ghost" size="icon" className="text-maroon/70 hover:text-maroon hover:bg-marigold/10">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-        </Link>
-        <h1 className="text-2xl font-display font-semibold text-maroon">Budget Settings</h1>
-      </header>
+    <div className="space-y-6 max-w-lg mx-auto">
+      <h1 className="text-2xl md:text-3xl font-display font-semibold text-maroon mb-6 hidden md:block">Budget Controls</h1>
 
       {error && <div className="p-4 mb-6 bg-rust-red/10 text-rust-red rounded-lg text-sm">{error}</div>}
 
@@ -193,6 +186,6 @@ export default function BudgetSettingsPage() {
           </Button>
         </Link>
       </div>
-    </main>
+    </div>
   )
 }
