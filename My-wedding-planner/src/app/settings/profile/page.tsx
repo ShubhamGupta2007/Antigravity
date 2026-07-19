@@ -145,7 +145,7 @@ export default function ProfileSettingsPage() {
               Account Role
             </Label>
             <Input 
-              value={role === 'admin' ? 'Super Admin' : role === 'planner' ? 'Planner' : role === 'pending' ? 'Pending Approval...' : 'Guest'} 
+              value={role === 'admin' ? 'Super Admin' : role === 'planner' ? 'Planner' : role === 'pending' ? 'Pending Approval...' : role === 'denied' ? 'Access Denied' : 'Guest'} 
               disabled
               className="border-marigold/30 bg-gray-100 text-gray-500 cursor-not-allowed font-semibold"
             />
@@ -165,6 +165,12 @@ export default function ProfileSettingsPage() {
               <div className="w-full text-xs font-bold bg-marigold/20 text-maroon p-2 rounded-md flex items-center justify-center">
                 <CheckCircle2 className="w-3 h-3 mr-2 text-mehendi" />
                 Request Sent
+              </div>
+            )}
+            {role === 'denied' && (
+              <div className="w-full text-xs font-bold bg-red-100 text-red-700 p-2 rounded-md flex items-center justify-center border border-red-200">
+                <ShieldAlert className="w-3 h-3 mr-2" />
+                Access Request Declined
               </div>
             )}
             
