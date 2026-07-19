@@ -17,6 +17,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [userRole, setUserRole] = useState<string>('regular')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [existingRelationships, setExistingRelationships] = useState<string[]>([])
   const [formDataState, setFormDataState] = useState({
@@ -57,6 +58,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
         router.push('/guests')
         return
       }
+      setUserRole(profile?.role || 'regular')
       setAuthorized(true)
 
       // Fetch existing relationships for dropdown
@@ -211,7 +213,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
 
         <div className="space-y-2">
           <Label htmlFor="side">Which Side?</Label>
-          <select id="side" name="side" value={formDataState.side} onChange={handleChange} required className="flex h-10 w-full rounded-md border border-marigold/50 bg-white px-3 py-2 text-sm">
+          <select id="side" name="side" value={formDataState.side} onChange={handleChange} required disabled={userRole !== 'admin'} className="flex h-10 w-full rounded-md border border-marigold/50 bg-white px-3 py-2 text-sm disabled:opacity-50">
             <option value="groom">Ladkewale (Groom's Side)</option>
             <option value="bride">Ladkiwale (Bride's Side)</option>
           </select>

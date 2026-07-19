@@ -26,6 +26,7 @@ function AddFamilyForm() {
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [userRole, setUserRole] = useState<string>('regular')
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   
   const router = useRouter()
@@ -78,6 +79,7 @@ function AddFamilyForm() {
       if (profile?.role !== 'admin' && profile?.role !== 'planner') {
         router.push('/guests')
       } else {
+        setUserRole(profile?.role || 'regular')
         setAuthorized(true)
       }
     }
@@ -262,22 +264,24 @@ function AddFamilyForm() {
               <button
                 type="button"
                 onClick={() => setSide('groom')}
+                disabled={userRole !== 'admin'}
                 className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
                   side === 'groom'
                     ? 'bg-maroon text-ivory border-maroon shadow-sm'
                     : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 Ladkewale 🤵‍♂️
               </button>
               <button
                 type="button"
                 onClick={() => setSide('bride')}
+                disabled={userRole !== 'admin'}
                 className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
                   side === 'bride'
                     ? 'bg-maroon text-ivory border-maroon shadow-sm'
                     : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 Ladkiwale 👰‍♀️
               </button>
