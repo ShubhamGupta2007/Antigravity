@@ -52,6 +52,8 @@ export default function ManageInvitesClient({
   const [tierFilter, setTierFilter] = useState<'all' | 'tier_1' | 'tier_2' | 'tier_3'>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [loading, setLoading] = useState<Record<string, boolean>>({})
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const uniqueRelationships = Array.from(new Set(families.map(f => f.relationship).filter(Boolean))).sort() as string[]
 
@@ -73,146 +75,86 @@ export default function ManageInvitesClient({
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   )
 
-  const handleMemberToggle = async (familyId: string, memberId: string | null, checked: boolean) => {
+  const handleMemberToggle = (familyId: string, memberId: string | null, checked: boolean) => {
     const key = `${familyId}-${memberId || 'family'}`
-    setLoading(prev => ({ ...prev, [key]: true }))
-
-    // Optimistically update local state
     setAttendanceMap(prev => ({ ...prev, [key]: checked }))
-
-    try {
-      if (checked) {
-        // Insert/Invite
-        const { error } = await supabase.from('function_attendance').upsert({
-          function_id: func.id,
-          family_id: familyId,
-          member_id: memberId,
-          is_attending: true
-        }, { onConflict: 'function_id,family_id,member_id' })
-
-        if (error) console.error('Error toggling attendance:', error.message)
-      } else {
-        // Remove Invite
-        const query = supabase
-          .from('function_attendance')
-          .delete()
-          .eq('function_id', func.id)
-          .eq('family_id', familyId)
-
-        if (memberId) {
-          query.eq('member_id', memberId)
-        } else {
-          query.is('member_id', null)
-        }
-
-        const { error } = await query
-        if (error) console.error('Error removing attendance:', error.message)
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(prev => ({ ...prev, [key]: false }))
-      router.refresh()
-    }
+    setHasUnsavedChanges(true)
   }
 
-  const handleFamilyToggle = async (family: Family, checked: boolean) => {
+  const handleFamilyToggle = (family: Family, checked: boolean) => {
     const key = `${family.id}-family`
-    setLoading(prev => ({ ...prev, [key]: true }))
-    family.family_members.forEach(m => {
-      setLoading(prev => ({ ...prev, [`${family.id}-${m.id}`]: true }))
-    })
-
-    // Local state updates
     const updatedMap = { ...attendanceMap }
     updatedMap[key] = checked
     family.family_members.forEach(m => {
       updatedMap[`${family.id}-${m.id}`] = checked
     })
     setAttendanceMap(updatedMap)
-
-    try {
-      if (checked) {
-        // Bulk invite family card level
-        const upsertData = [
-          {
-            function_id: func.id,
-            family_id: family.id,
-            member_id: null,
-            is_attending: true
-          },
-          ...family.family_members.map(m => ({
-            function_id: func.id,
-            family_id: family.id,
-            member_id: m.id,
-            is_attending: true
-          }))
-        ]
-
-        const { error } = await supabase
-          .from('function_attendance')
-          .upsert(upsertData, { onConflict: 'function_id,family_id,member_id' })
-        
-        if (error) console.error(error.message)
-      } else {
-        // Delete all attendance for this family
-        const { error } = await supabase
-          .from('function_attendance')
-          .delete()
-          .eq('function_id', func.id)
-          .eq('family_id', family.id)
-
-        if (error) console.error(error.message)
-      }
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(prev => ({ ...prev, [key]: false }))
-      family.family_members.forEach(m => {
-        setLoading(prev => ({ ...prev, [`${family.id}-${m.id}`]: false }))
-      })
-      router.refresh()
-    }
+    setHasUnsavedChanges(true)
   }
 
-  // Auto-invite by relation tier
-  const handleAutoInviteTier = async (tier: 'tier_1' | 'tier_2' | 'tier_3') => {
+  const handleAutoInviteTier = (tier: 'tier_1' | 'tier_2' | 'tier_3') => {
     const targetFamilies = families.filter(f => f.relation_tier === tier)
     if (targetFamilies.length === 0) return
 
-    const upsertData: any[] = []
     const updatedMap = { ...attendanceMap }
 
     targetFamilies.forEach(f => {
-      upsertData.push({
-        function_id: func.id,
-        family_id: f.id,
-        member_id: null,
-        is_attending: true
-      })
       updatedMap[`${f.id}-family`] = true
-
       f.family_members.forEach(m => {
-        upsertData.push({
-          function_id: func.id,
-          family_id: f.id,
-          member_id: m.id,
-          is_attending: true
-        })
         updatedMap[`${f.id}-${m.id}`] = true
       })
     })
 
     setAttendanceMap(updatedMap)
+    setHasUnsavedChanges(true)
+  }
 
-    const { error } = await supabase
-      .from('function_attendance')
-      .upsert(upsertData, { onConflict: 'function_id,family_id,member_id' })
+  const handleSaveChanges = async () => {
+    setSaving(true)
+    try {
+      const upserts: any[] = []
+      const toDelete: { family_id: string, member_id: string | null }[] = []
 
-    if (error) {
-      console.error('Error auto-inviting tier:', error.message)
-    } else {
+      families.forEach(f => {
+        const familyKey = `${f.id}-family`
+        const initiallyAttendingFam = initialAttendance.some(a => a.family_id === f.id && a.member_id === null && a.is_attending)
+        if (attendanceMap[familyKey] && !initiallyAttendingFam) {
+          upserts.push({ function_id: func.id, family_id: f.id, member_id: null, is_attending: true })
+        } else if (!attendanceMap[familyKey] && initiallyAttendingFam) {
+          toDelete.push({ family_id: f.id, member_id: null })
+        }
+
+        f.family_members.forEach(m => {
+          const memberKey = `${f.id}-${m.id}`
+          const initiallyAttendingMem = initialAttendance.some(a => a.family_id === f.id && a.member_id === m.id && a.is_attending)
+          if (attendanceMap[memberKey] && !initiallyAttendingMem) {
+            upserts.push({ function_id: func.id, family_id: f.id, member_id: m.id, is_attending: true })
+          } else if (!attendanceMap[memberKey] && initiallyAttendingMem) {
+            toDelete.push({ family_id: f.id, member_id: m.id })
+          }
+        })
+      })
+
+      if (upserts.length > 0) {
+        await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+      }
+
+      for (const del of toDelete) {
+        let q = supabase.from('function_attendance').delete().eq('function_id', func.id).eq('family_id', del.family_id)
+        if (del.member_id) {
+          q = q.eq('member_id', del.member_id)
+        } else {
+          q = q.is('member_id', null)
+        }
+        await q
+      }
+
+      setHasUnsavedChanges(false)
       router.refresh()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -538,6 +480,19 @@ export default function ManageInvitesClient({
               </div>
             )
           })
+        )}
+        {hasUnsavedChanges && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-maroon text-ivory px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(110,24,24,0.4)] flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5 font-bold border border-marigold/30">
+            <span className="text-sm whitespace-nowrap">⚠️ You have unsaved changes!</span>
+            <Button 
+              size="sm" 
+              onClick={handleSaveChanges} 
+              disabled={saving}
+              className="bg-marigold text-maroon hover:bg-marigold/90 h-8 font-semibold rounded-full px-6 transition-transform active:scale-95"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
         )}
       </section>
     </div>

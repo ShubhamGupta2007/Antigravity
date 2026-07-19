@@ -26,6 +26,7 @@ function AddFamilyForm() {
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -175,8 +176,10 @@ function AddFamilyForm() {
       
       // Refresh router background queries quietly
       router.refresh()
+      setHasUnsavedChanges(false)
     } else {
       // Success! Navigate back to guests dashboard
+      setHasUnsavedChanges(false)
       router.push('/guests')
       router.refresh()
     }
@@ -214,67 +217,71 @@ function AddFamilyForm() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="family_name">Family Name (e.g. Sharma Family)</Label>
-          <Input 
-            id="family_name" 
-            name="family_name" 
-            value={familyNameVal}
-            onChange={(e) => setFamilyNameVal(e.target.value)}
-            required 
-            className="bg-white border-marigold/50" 
-          />
-          {familyNameVal.trim() !== '' && isDuplicate && (
-            <p className="text-xs text-rust-red font-data flex items-center mt-1">
-              ⚠️ A family with this name already exists in the list.
-            </p>
-          )}
-        </div>
+      <form onSubmit={handleSubmit} onChange={() => setHasUnsavedChanges(true)} className="space-y-6 flex-1">
+        
+        {/* Family Name & Side */}
+        <div className="bg-white p-5 rounded-2xl border border-marigold/30 shadow-sm space-y-4 relative">
+          <div className="space-y-2">
+            <Label htmlFor="family_name">Family Name (e.g. Sharma Family)</Label>
+            <Input 
+              id="family_name" 
+              name="family_name" 
+              value={familyNameVal}
+              onChange={(e) => setFamilyNameVal(e.target.value)}
+              required 
+              className="bg-white border-marigold/50" 
+            />
+            {familyNameVal.trim() !== '' && isDuplicate && (
+              <p className="text-xs text-rust-red font-data flex items-center mt-1">
+                ⚠️ A family with this name already exists in the list.
+              </p>
+            )}
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="relationship">Relationship (e.g. Friends to Dad, Maternal Family)</Label>
-          <Input 
-            id="relationship" 
-            name="relationship" 
-            list="relationships-list"
-            placeholder="e.g. Friends to Dad"
-            required 
-            className="bg-white border-marigold/50" 
-          />
-          <datalist id="relationships-list">
-            {existingRelationships.map(rel => (
-              <option key={rel} value={rel} />
-            ))}
-          </datalist>
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="relationship">Relationship (e.g. Friends to Dad, Maternal Family)</Label>
+            <Input 
+              id="relationship" 
+              name="relationship" 
+              list="relationships-list"
+              placeholder="e.g. Friends to Dad"
+              required 
+              className="bg-white border-marigold/50" 
+            />
+            <datalist id="relationships-list">
+              {existingRelationships.map(rel => (
+                <option key={rel} value={rel} />
+              ))}
+            </datalist>
+          </div>
 
-        {/* Side Selector Pills */}
-        <div className="space-y-2">
-          <Label>Which Side?</Label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setSide('groom')}
-              className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
-                side === 'groom'
-                  ? 'bg-maroon text-ivory border-maroon shadow-sm'
-                  : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
-              }`}
-            >
-              Ladkewale 🤵‍♂️
-            </button>
-            <button
-              type="button"
-              onClick={() => setSide('bride')}
-              className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
-                side === 'bride'
-                  ? 'bg-maroon text-ivory border-maroon shadow-sm'
-                  : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
-              }`}
-            >
-              Ladkiwale 👰‍♀️
-            </button>
+          {/* Side Selector Pills */}
+          <div className="space-y-2">
+            <Label>Which Side?</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSide('groom')}
+                className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
+                  side === 'groom'
+                    ? 'bg-maroon text-ivory border-maroon shadow-sm'
+                    : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
+                }`}
+              >
+                Ladkewale 🤵‍♂️
+              </button>
+              <button
+                type="button"
+                onClick={() => setSide('bride')}
+                className={`flex-1 py-2 px-3 text-xs font-semibold rounded-xl border transition-all ${
+                  side === 'bride'
+                    ? 'bg-maroon text-ivory border-maroon shadow-sm'
+                    : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
+                }`}
+              >
+                Ladkiwale 👰‍♀️
+              </button>
+            </div>
           </div>
         </div>
 
@@ -373,10 +380,18 @@ function AddFamilyForm() {
           </Label>
         </div>
 
-        <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6">
-          {loading ? 'Saving...' : 'Save Family'}
-        </Button>
+        <div className="sticky bottom-0 bg-ivory pt-4 pb-2">
+          <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6">
+            {loading ? 'Saving...' : 'Save Family'}
+          </Button>
+        </div>
       </form>
+
+      {hasUnsavedChanges && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-maroon text-ivory px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(110,24,24,0.4)] flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5 font-bold border border-marigold/30 pointer-events-none">
+          <span className="text-sm whitespace-nowrap">⚠️ You have unsaved changes in your form!</span>
+        </div>
+      )}
     </main>
   )
 }

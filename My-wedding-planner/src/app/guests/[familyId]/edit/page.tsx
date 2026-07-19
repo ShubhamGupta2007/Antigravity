@@ -17,6 +17,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [existingRelationships, setExistingRelationships] = useState<string[]>([])
   const [formDataState, setFormDataState] = useState({
     family_name: '',
@@ -129,6 +130,7 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
     }
 
     // Redirect to guests dashboard
+    setHasUnsavedChanges(false)
     router.push('/guests')
     router.refresh()
   }
@@ -188,11 +190,12 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
 
       {error && <div className="p-4 mb-6 bg-rust-red/10 border border-rust-red/20 text-rust-red rounded-lg text-sm">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="family_name">Family Name</Label>
-          <Input id="family_name" name="family_name" value={formDataState.family_name} onChange={handleChange} required className="bg-white border-marigold/50" />
-        </div>
+      <form onSubmit={handleSubmit} onChange={() => setHasUnsavedChanges(true)} className="space-y-6 flex-1">
+        <div className="bg-white p-5 rounded-2xl border border-marigold/30 shadow-sm space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="family_name">Family Name</Label>
+            <Input id="family_name" name="family_name" value={formDataState.family_name} onChange={handleChange} required className="bg-white border-marigold/50" />
+          </div>
 
         <div className="space-y-2">
           <Label htmlFor="relationship">Relationship (e.g. Friends to Dad, Maternal Family)</Label>
@@ -254,20 +257,23 @@ export default function EditFamilyPage({ params }: { params: Promise<{ familyId:
           <Label htmlFor="contact_phone">Contact Phone Number</Label>
           <Input id="contact_phone" name="contact_phone" value={formDataState.contact_phone} onChange={handleChange} type="tel" className="bg-white border-marigold/50" />
         </div>
+        </div>
 
-        <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">
-          {loading ? 'Saving...' : 'Save Changes'}
-        </Button>
-
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={loading}
-          className="w-full mt-4 text-xs font-semibold text-rust-red/80 hover:text-rust-red bg-rust-red/5 hover:bg-rust-red/10 border border-rust-red/20 py-3 rounded-xl transition-all"
-        >
-          🗑️ Delete Family Card
-        </button>
+        <div className="sticky bottom-0 bg-ivory pt-4 pb-2 space-y-3">
+          <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6">
+            {loading ? 'Saving...' : 'Save Changes'}
+          </Button>
+          <Button type="button" variant="outline" onClick={handleDelete} disabled={loading} className="w-full border-rust-red/30 text-rust-red hover:bg-rust-red/10 py-6">
+            Delete Family
+          </Button>
+        </div>
       </form>
+
+      {hasUnsavedChanges && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-maroon text-ivory px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(110,24,24,0.4)] flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5 font-bold border border-marigold/30 pointer-events-none">
+          <span className="text-sm whitespace-nowrap">⚠️ You have unsaved changes in your form!</span>
+        </div>
+      )}
     </main>
   )
 }
