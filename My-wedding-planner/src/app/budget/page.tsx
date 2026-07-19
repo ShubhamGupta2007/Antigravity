@@ -55,8 +55,8 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   // Access validation:
   const isAdmin = role === 'admin' || role === 'bride' || role === 'groom'
   
-  let hasAccess = isAdmin
-  if (!isAdmin) {
+  let hasAccess = isAdmin || role === 'planner'
+  if (!hasAccess) {
     const { data: perm } = await supabase
       .from('feature_permissions')
       .select('can_view')

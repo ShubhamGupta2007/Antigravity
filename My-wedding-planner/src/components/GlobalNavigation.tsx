@@ -30,6 +30,7 @@ export default function GlobalNavigation() {
 
   const [isGuestView, setIsGuestView] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+  const [pendingCount, setPendingCount] = useState(0)
   
   useEffect(() => {
     // Sync initial state from cookie
@@ -52,6 +53,13 @@ export default function GlobalNavigation() {
         
       if (dbUser) {
         setRole(dbUser.role)
+        if (dbUser.role === 'admin') {
+          const { count } = await supabase
+            .from('users')
+            .select('*', { count: 'exact', head: true })
+            .eq('role', 'pending')
+          setPendingCount(count || 0)
+        }
       }
     }
     loadRole()
@@ -85,10 +93,13 @@ export default function GlobalNavigation() {
               className="flex flex-col items-center justify-center space-y-1 relative w-12"
             >
               <div className={cn(
-                "p-2 rounded-xl transition-all duration-300",
+                "p-2 rounded-xl transition-all duration-300 relative",
                 isActive ? "bg-maroon text-ivory shadow-md scale-110" : "text-maroon/50 hover:bg-marigold/20 hover:text-maroon"
               )}>
                 <item.icon strokeWidth={isActive ? 2.5 : 2} className="w-5 h-5" />
+                {item.name === 'Settings' && pendingCount > 0 && role === 'admin' && (
+                  <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></div>
+                )}
               </div>
               <span className={cn(
                 "text-[10px] font-bold transition-all duration-300 font-sans tracking-wide",
@@ -131,7 +142,12 @@ export default function GlobalNavigation() {
                     : "text-maroon/60 hover:bg-marigold/15 hover:text-maroon"
                 )}
               >
-                <item.icon strokeWidth={isActive ? 2.5 : 2} className={cn("w-6 h-6 shrink-0 transition-transform duration-200", !isActive && "group-hover:scale-110")} />
+                <div className="relative">
+                  <item.icon strokeWidth={isActive ? 2.5 : 2} className={cn("w-6 h-6 shrink-0 transition-transform duration-200", !isActive && "group-hover:scale-110")} />
+                  {item.name === 'Settings' && pendingCount > 0 && role === 'admin' && (
+                    <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></div>
+                  )}
+                </div>
                 <span className={cn("font-bold", isActive ? "text-ivory" : "text-maroon/80 group-hover:text-maroon")}>
                   {item.name}
                 </span>

@@ -171,6 +171,9 @@ export default function UsersManagementPage() {
                     {u.role === 'pending' && (
                       <Badge className="bg-marigold text-maroon hover:bg-marigold">Pending Access</Badge>
                     )}
+                    {u.role === 'denied' && (
+                      <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border border-red-200">Denied</Badge>
+                    )}
                     {u.role === 'admin' && (
                       <Badge className="bg-maroon text-ivory hover:bg-maroon">Super Admin</Badge>
                     )}
@@ -194,12 +197,23 @@ export default function UsersManagementPage() {
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => handleUpdateRole(u.id, 'guest')}
-                          className="border-maroon/20 text-maroon hover:bg-maroon/5 h-8 text-xs"
+                          onClick={() => handleUpdateRole(u.id, 'denied')}
+                          className="border-red-200 text-red-600 hover:bg-red-50 h-8 text-xs"
                         >
                           Deny
                         </Button>
                       </>
+                    )}
+                    
+                    {u.role === 'denied' && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleUpdateRole(u.id, 'guest')}
+                        className="border-maroon/20 text-maroon hover:bg-maroon/5 h-8 text-xs"
+                      >
+                        <ShieldCheck className="w-3 h-3 mr-1" /> Reset to Guest
+                      </Button>
                     )}
                     
                     {(u.role === 'guest' || u.role === 'planner') && (
