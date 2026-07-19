@@ -76,27 +76,15 @@ export default async function Home() {
           Are getting married!
         </p>
 
-        <div className="flex flex-col md:flex-row gap-4 items-center w-full max-w-2xl mt-2">
-          {/* Engagement Card */}
-          <div className="flex-1 bg-marigold/5 border border-marigold/20 rounded-xl p-3 w-full">
-            <span className="block text-[10px] uppercase tracking-widest text-maroon/60 font-data font-semibold mb-1">Ring Ceremony</span>
-            <div className="text-xs md:text-sm font-data text-maroon font-semibold">
-              January 17, 2027
-            </div>
-            <div className="text-xs font-data text-maroon/70">
-              Muzaffarnagar
-            </div>
+        <div className="flex flex-col gap-2 mt-4 border-t border-b border-marigold/20 py-3 px-8 w-full max-w-md mx-auto relative">
+          <div className="text-xs md:text-sm font-data text-maroon/70 uppercase tracking-widest flex justify-between items-center">
+            <span className="font-semibold text-maroon">Ring Ceremony</span>
+            <span className="text-right">Jan 17 • Muzaffarnagar</span>
           </div>
-          
-          {/* Wedding Card */}
-          <div className="flex-1 bg-rani-pink/5 border border-rani-pink/20 rounded-xl p-3 w-full">
-            <span className="block text-[10px] uppercase tracking-widest text-maroon/60 font-data font-semibold mb-1">Wedding Ceremony</span>
-            <div className="text-xs md:text-sm font-data text-maroon font-semibold">
-              January 19, 2027
-            </div>
-            <div className="text-xs font-data text-maroon/70">
-              New Delhi
-            </div>
+          <div className="w-full h-px bg-marigold/10"></div>
+          <div className="text-xs md:text-sm font-data text-maroon/70 uppercase tracking-widest flex justify-between items-center">
+            <span className="font-semibold text-maroon">Wedding</span>
+            <span className="text-right">Jan 19 • New Delhi</span>
           </div>
         </div>
         
