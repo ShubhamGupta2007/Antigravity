@@ -608,7 +608,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
       )}
 
       {/* Modification History (Admins Only) */}
-      {isAdmin && historyLogs.length > 0 && (
+      {isSuperAdmin && historyLogs.length > 0 && (
         <section className="mt-8 space-y-4">
           <h2 className="text-lg font-display font-semibold text-maroon font-serif">Modification History Log</h2>
           <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-4 space-y-3">
