@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Poppins, DM_Sans, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -39,7 +40,10 @@ export default function RootLayout({
       className={cn("h-full", "antialiased", cormorant.variable, poppins.variable, dmSans.variable, "font-sans", geist.variable)}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans bg-ivory text-maroon" suppressHydrationWarning>{children}</body>
+      <body className="min-h-full flex flex-col font-sans bg-ivory text-maroon" suppressHydrationWarning>
+        {children}
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
