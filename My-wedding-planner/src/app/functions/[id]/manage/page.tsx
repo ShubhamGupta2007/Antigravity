@@ -60,7 +60,7 @@ export default async function ManageInvitesPage({ params }: PageProps) {
     needs_room,
     rooms_assigned,
     room_numbers,
-    family_members (id, name, relation_to_head)
+    family_members (id, name, relation_to_head, is_kid_for_gifting)
   `)
 
   // If not admin and it is not joint, only fetch families on the user's side
