@@ -53,7 +53,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   }
 
   // Access validation:
-  const isAdmin = role === 'admin' || role === 'bride' || role === 'groom'
+  const isAdmin = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom'
   
   let hasAccess = isAdmin || role === 'planner'
   if (!hasAccess) {

@@ -85,8 +85,8 @@ export default async function GuestsPage() {
   const ladkewale = (families || []).filter(f => f.side === 'groom')
   const ladkiwale = (families || []).filter(f => f.side === 'bride')
 
-  const canEditGroom = role === 'admin'
-  const canEditBride = role === 'admin'
+  const canEditGroom = role === 'admin' || role === 'planner'
+  const canEditBride = role === 'admin' || role === 'planner'
 
   // Live Guest Stats Calculation
   const allFamilies = families || []
@@ -171,7 +171,7 @@ export default async function GuestsPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-display font-semibold text-maroon">Guest List</h1>
-          {role === 'admin' && <span className="text-xs bg-maroon text-ivory px-2 py-0.5 rounded-full font-data">Admin</span>}
+          {(role === 'admin' || role === 'planner') && <span className="text-xs bg-maroon text-ivory px-2 py-0.5 rounded-full font-data">{role === 'admin' ? 'Admin' : 'Planner'}</span>}
         </div>
       </header>
 
