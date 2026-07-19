@@ -420,7 +420,7 @@ export default function ManageInvitesClient({
                     />
                     <div>
                       <label htmlFor={family.id} className="font-data font-semibold text-maroon text-sm cursor-pointer hover:text-maroon/80 flex items-center gap-2">
-                        {family.family_name} Family
+                        {family.family_name.toLowerCase().endsWith('family') ? family.family_name : `${family.family_name} Family`}
                         <span className="text-[10px] bg-marigold/20 px-1.5 py-0.5 rounded font-medium">
                           {(family.expected_adults_count || 1) + (family.expected_kids_count || 0)} members
                         </span>

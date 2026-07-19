@@ -375,7 +375,9 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                     return (
                       <div key={fc.id} className="p-3 bg-ivory/50 rounded-lg border border-marigold/15">
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-data font-semibold text-maroon">{familyDetails?.family_name} Family</span>
+                          <span className="text-xs font-data font-semibold text-maroon">
+                            {familyDetails?.family_name?.toLowerCase().endsWith('family') ? familyDetails.family_name : `${familyDetails?.family_name} Family`}
+                          </span>
                           <span className="text-[10px] bg-maroon/10 text-maroon px-1.5 py-0.2 rounded-full font-data">
                             {members.length} attending
                           </span>
@@ -415,7 +417,9 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                   <div key={req.id} className="flex items-center justify-between py-1.5 text-xs font-data border-b border-marigold/5">
                     <div>
                       <span className="font-medium text-maroon block">{req.name}</span>
-                      <span className="text-[10px] text-maroon/50 block">{req.familyName} Family</span>
+                      <span className="text-[10px] text-maroon/50 block">
+                        {req.familyName.toLowerCase().endsWith('family') ? req.familyName : `${req.familyName} Family`}
+                      </span>
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                       req.isAttending ? 'bg-mehendi/15 text-mehendi' : 'bg-rust-red/15 text-rust-red'

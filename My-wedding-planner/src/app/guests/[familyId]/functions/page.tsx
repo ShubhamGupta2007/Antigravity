@@ -55,7 +55,7 @@ export default async function ManageFamilyFunctionsPage({ params }: { params: Pr
           </div>
           <div>
             <h1 className="text-2xl font-display font-semibold text-maroon">Manage Functions</h1>
-            <p className="text-xs font-data text-maroon/60">Select which functions the {family.family_name} Family is invited to</p>
+            <p className="text-xs font-data text-maroon/60">Select which functions {family.family_name.toLowerCase().endsWith('family') ? family.family_name : `${family.family_name} Family`} is invited to</p>
           </div>
         </div>
       </header>
