@@ -42,6 +42,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   const { data: attendance, error: attendanceError } = await supabase
     .from('function_attendance')
     .select(`
+      id,
       family_id,
       member_id,
       families (
