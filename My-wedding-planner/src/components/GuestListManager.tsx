@@ -158,8 +158,8 @@ export default function GuestListManager({
     return true
   })
 
-  const canEditGroom = role === 'admin'
-  const canEditBride = role === 'admin'
+  const canEditGroom = role === 'admin' || (role === 'planner' && userSide === 'groom') || role === 'groom'
+  const canEditBride = role === 'admin' || (role === 'planner' && userSide === 'bride') || role === 'bride'
   const canEditActive = activeSide === 'groom' ? canEditGroom : canEditBride
 
   const uniqueRelationships = Array.from(new Set(initialFamilies

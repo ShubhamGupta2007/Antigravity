@@ -53,9 +53,9 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   }
 
   // Access validation:
-  const isAdmin = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom'
+  const isSuperAdmin = role === 'admin'
   
-  let hasAccess = isAdmin || role === 'planner'
+  let hasAccess = isSuperAdmin || role === 'planner' || role === 'bride' || role === 'groom'
   if (!hasAccess) {
     const { data: perm } = await supabase
       .from('feature_permissions')
@@ -85,8 +85,8 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   const sortParam = resolvedSearchParams.sort || 'allocation'
   
   // Validate permissions for target viewSide
-  const canViewCombined = isAdmin || grant?.scope === 'combined'
-  const canViewOtherSide = isAdmin || grant?.scope === 'other_side' || grant?.scope === 'combined'
+  const canViewCombined = isSuperAdmin || grant?.scope === 'combined'
+  const canViewOtherSide = isSuperAdmin || grant?.scope === 'other_side' || grant?.scope === 'combined'
   
   let activeSide: 'groom' | 'bride' | 'combined' = (urlViewSide as any) || side || 'groom'
   if (activeSide === 'combined' && !canViewCombined) {
@@ -151,7 +151,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
 
   // Fetch edit history logs if admin
   let historyLogs: any[] = []
-  if (isAdmin) {
+  if (isSuperAdmin) {
     const { data: logs } = await supabase
       .from('expense_edit_history')
       .select(`
@@ -262,7 +262,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
           <h1 className="text-2xl font-display font-semibold text-maroon font-serif">Budget</h1>
         </div>
         <div className="flex items-center space-x-2">
-          {isAdmin && (
+          {(isSuperAdmin || role === 'planner') && (
             <Link href="/budget/setup">
               <Button variant="outline" className="border-marigold/40 text-maroon hover:bg-marigold/10 text-xs py-1 h-8">
                 ⚙️ Setup Limits
@@ -273,7 +273,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
       </header>
 
       {/* Side selection toggles */}
-      {(isAdmin || grant) && (
+      {(isSuperAdmin || grant) && (
         <div className="grid grid-cols-3 gap-1 bg-marigold/10 p-1 rounded-full mb-6">
           <Link href={`?viewSide=groom&tab=${activeTab}`} className={`py-2 text-center text-xs font-semibold rounded-full transition-all duration-300 ${
             activeSide === 'groom' ? 'bg-maroon text-ivory shadow-sm' : 'text-maroon/70 hover:text-maroon'
@@ -367,7 +367,7 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
                 <p className="text-maroon/80 font-data text-sm max-w-xs mx-auto leading-relaxed">
                   Define your wedding spending limits per category (Venue, Catering, Florals, etc.) to get started.
                 </p>
-                {isAdmin && (
+                {(isSuperAdmin || role === 'planner') && (
                   <Link href="/budget/setup" className="inline-block">
                     <Button className="bg-maroon text-ivory hover:bg-maroon/90 shadow-sm font-medium">
                       ⚙️ Set Up Budgets & Targets
