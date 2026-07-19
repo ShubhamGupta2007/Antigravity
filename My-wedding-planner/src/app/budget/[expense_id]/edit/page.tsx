@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ type Category = {
   function_id?: string | null
 }
 
-export default function EditExpenseForm({ params }: { params: { expense_id: string } }) {
+export default function EditExpenseForm({ params }: { params: Promise<{ expense_id: string }> }) {
   const [categories, setCategories] = useState<Category[]>([])
   const [functions, setFunctions] = useState<any[]>([])
   const [allSubItems, setAllSubItems] = useState<any[]>([])
@@ -28,7 +28,8 @@ export default function EditExpenseForm({ params }: { params: { expense_id: stri
   const [error, setError] = useState<string | null>(null)
   
   const router = useRouter()
-  const expenseId = params.expense_id
+  const resolvedParams = use(params)
+  const expenseId = resolvedParams.expense_id
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -65,7 +66,8 @@ export default function EditExpenseForm({ params }: { params: { expense_id: stri
         setExpense(expRes.data)
         setSelectedCategoryId(expRes.data.category_id)
       } else {
-        setError('Expense not found')
+        console.error("Expense fetch error:", expRes.error)
+        setError('Expense not found. ID: ' + expenseId + (expRes.error ? ' Error: ' + expRes.error.message : ''))
       }
 
       setFetching(false)
