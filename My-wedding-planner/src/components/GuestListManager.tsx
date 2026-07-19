@@ -3,13 +3,14 @@
 import { useState, Fragment } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { UserPlus, Search, ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { UserPlus, Search, ChevronDown, ChevronUp, Plus, CalendarDays, Settings, Edit2 } from 'lucide-react'
 
 type FamilyMember = {
   id: string
   name: string
   age: number | null
   relation_to_head: string | null
+  gender: string
 }
 
 type Family = {
@@ -25,12 +26,51 @@ type Family = {
   contact_phone: string | null
   relationship: string | null
   family_members: FamilyMember[]
+  function_attendance?: {
+    function_id: string
+    functions?: { name: string } | null
+  }[]
 }
 
 const TIER_LABELS: Record<string, string> = {
   tier_1: 'Immediate Family (Hosts) 👑',
   tier_2: 'Close Circle (Rishtedaar & Friends) 🤝',
   tier_3: 'Extended Circle & Neighbors 🏡'
+}
+
+// Custom Action Menu Component
+function ActionMenu({ family }: { family: Family }) {
+  const [open, setOpen] = useState(false)
+  
+  return (
+    <div className="relative" onMouseLeave={() => setOpen(false)}>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        className="h-8 px-2 text-xs border-marigold/30 text-maroon hover:bg-marigold/10 rounded-full"
+      >
+        <Settings className="w-3.5 h-3.5 mr-1" /> Manage
+      </Button>
+      
+      {open && (
+        <div 
+          className="absolute right-0 top-full mt-1 w-48 bg-white border border-marigold/30 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Link href={`/guests/${family.id}/edit`} className="flex items-center px-4 py-2.5 text-xs text-maroon hover:bg-marigold/15 font-data">
+            <Edit2 className="w-3.5 h-3.5 mr-2" /> Edit Details
+          </Link>
+          <Link href={`/guests/${family.id}/add-member`} className="flex items-center px-4 py-2.5 text-xs text-maroon hover:bg-mehendi/15 font-data">
+            <UserPlus className="w-3.5 h-3.5 mr-2" /> Add Member
+          </Link>
+          <Link href={`/guests/${family.id}/functions`} className="flex items-center px-4 py-2.5 text-xs text-maroon hover:bg-blue-50 font-data">
+            <CalendarDays className="w-3.5 h-3.5 mr-2" /> Manage Functions
+          </Link>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function GuestListManager({
@@ -70,12 +110,7 @@ export default function GuestListManager({
     }
 
     // 2. Tier filter
-    if (selectedTier === 'all') {
-      // Exclude hosts/immediate family from general invited list by default
-      if (f.relation_tier === 'tier_1') {
-        return false
-      }
-    } else {
+    if (selectedTier !== 'all') {
       if (f.relation_tier !== selectedTier) {
         return false
       }
@@ -105,7 +140,7 @@ export default function GuestListManager({
   const canEditActive = activeSide === 'groom' ? canEditGroom : canEditBride
 
   const uniqueRelationships = Array.from(new Set(initialFamilies
-    .filter(f => f.side === activeSide && (selectedTier === 'all' ? f.relation_tier !== 'tier_1' : f.relation_tier === selectedTier))
+    .filter(f => f.side === activeSide && (selectedTier === 'all' ? true : f.relation_tier === selectedTier))
     .map(f => f.relationship)
     .filter(Boolean) as string[]
   )).sort()
@@ -192,13 +227,12 @@ export default function GuestListManager({
         {/* Navigation Tabs */}
         <div className="flex flex-wrap gap-1.5 border-b border-marigold/10 pb-2">
           {[
-            { id: 'all', label: 'Invited Guests (All) 🌐' },
-            { id: 'tier_1', label: 'Immediate Family 👑' },
+            { id: 'all', label: 'All Guests 🌐' },
             { id: 'tier_2', label: 'Close Circle 🤝' },
             { id: 'tier_3', label: 'Extended & Neighbors 🏡' }
           ].map(tab => {
             const count = initialFamilies.filter(f => 
-              f.side === activeSide && (tab.id === 'all' ? f.relation_tier !== 'tier_1' : f.relation_tier === tab.id)
+              f.side === activeSide && (tab.id === 'all' ? true : f.relation_tier === tab.id)
             ).length
             return (
               <button
@@ -233,7 +267,7 @@ export default function GuestListManager({
             >
               🤵‍♂️ Ladkewale (Groom)
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeSide === 'groom' ? 'bg-white/20 text-white' : 'bg-marigold/10 text-maroon'}`}>
-                {initialFamilies.filter(f => f.side === 'groom' && (selectedTier === 'all' ? f.relation_tier !== 'tier_1' : f.relation_tier === selectedTier)).length}
+                {initialFamilies.filter(f => f.side === 'groom' && (selectedTier === 'all' ? true : f.relation_tier === selectedTier)).length}
               </span>
             </button>
             <button
@@ -246,7 +280,7 @@ export default function GuestListManager({
             >
               👰‍♀️ Ladkiwale (Bride)
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeSide === 'bride' ? 'bg-white/20 text-white' : 'bg-marigold/10 text-maroon'}`}>
-                {initialFamilies.filter(f => f.side === 'bride' && (selectedTier === 'all' ? f.relation_tier !== 'tier_1' : f.relation_tier === selectedTier)).length}
+                {initialFamilies.filter(f => f.side === 'bride' && (selectedTier === 'all' ? true : f.relation_tier === selectedTier)).length}
               </span>
             </button>
           </div>
@@ -258,15 +292,6 @@ export default function GuestListManager({
 
         {/* Action button & View Mode Switcher */}
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-          {/* Quick Add Family Link */}
-          {canEditActive && (
-            <Link href={`/guests/add-family?side=${activeSide}&relation_tier=${selectedTier !== 'all' ? selectedTier : 'tier_2'}`} className="w-full sm:w-auto">
-              <Button size="sm" className="bg-maroon text-ivory hover:bg-maroon/90 w-full sm:w-auto text-xs rounded-xl flex items-center justify-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> Add Family
-              </Button>
-            </Link>
-          )}
-
           {/* View Mode controls */}
           <div className="flex items-center gap-1.5 border border-marigold/35 bg-ivory p-1 rounded-xl w-full sm:w-auto justify-center">
             <button
@@ -343,6 +368,16 @@ export default function GuestListManager({
           </div>
         )}
       </div>
+      
+      {/* Floating Action Button */}
+      {canEditActive && (
+        <Link href={`/guests/add-family?side=${activeSide}&relation_tier=${selectedTier !== 'all' ? selectedTier : 'tier_2'}`}>
+          <div className="fixed bottom-20 md:bottom-8 right-6 z-40 bg-maroon text-ivory px-6 py-4 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:scale-105 hover:bg-maroon/90 transition-all flex items-center justify-center cursor-pointer group border border-marigold/20">
+            <Plus className="w-5 h-5 mr-2" />
+            <span className="font-bold text-sm">Add Family</span>
+          </div>
+        </Link>
+      )}
     </div>
   )
 }
@@ -363,11 +398,11 @@ function GuestTable({
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="bg-ivory border-b border-marigold/20 text-maroon/80 font-display text-xs font-bold uppercase tracking-wider">
-            <th className="p-4 pl-6 w-1/3">Family Name</th>
+            <th className="p-4 pl-6 w-1/4">Family Name</th>
             <th className="p-4">Category</th>
-            <th className="p-4">City</th>
             <th className="p-4">Location</th>
-            <th className="p-4 text-center">Members</th>
+            <th className="p-4">Functions</th>
+            <th className="p-4 text-center">Composition</th>
             <th className="p-4 text-right pr-6">Actions</th>
           </tr>
         </thead>
@@ -399,7 +434,6 @@ function GuestTable({
                       <div className="mt-1.5 text-[10px] text-maroon/70 font-semibold uppercase tracking-wider">{family.relationship}</div>
                     )}
                   </td>
-                  <td className="p-4 text-maroon/70 font-normal">{family.city || '-'}</td>
                   <td className="p-4 text-xs">
                     {family.is_local ? (
                       <span className="text-maroon/50">Local 🚗</span>
@@ -408,31 +442,58 @@ function GuestTable({
                         Outstation ✈️
                       </span>
                     )}
+                    {family.city && <div className="mt-1 text-[10px] text-maroon/70">{family.city}</div>}
                   </td>
-                  <td className="p-4 text-center font-bold">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      addedCount === expectedCount 
-                        ? 'bg-mehendi/15 text-mehendi' 
-                        : 'bg-maroon/10 text-maroon'
-                    }`}>
-                      {addedCount} / {expectedCount}
-                    </span>
+                  <td className="p-4">
+                    <div className="flex flex-wrap gap-1 max-w-[140px]">
+                      {(() => {
+                        const uniqueFunctions = Array.from(new Set(
+                          (family.function_attendance || [])
+                            .map(a => a.functions?.name)
+                            .filter(Boolean)
+                        )) as string[]
+                        
+                        if (uniqueFunctions.length === 0) {
+                          return <span className="text-[10px] text-maroon/40 italic">None yet</span>
+                        }
+                        
+                        const visible = uniqueFunctions.slice(0, 3)
+                        const remaining = uniqueFunctions.length - 3
+
+                        return (
+                          <>
+                            {visible.map((fnName, i) => (
+                              <span key={i} title={fnName} className="text-[9px] font-bold bg-ivory text-maroon border border-marigold/30 px-1.5 py-0.5 rounded truncate max-w-[90px]">
+                                {fnName}
+                              </span>
+                            ))}
+                            {remaining > 0 && (
+                              <span title={uniqueFunctions.slice(3).join(', ')} className="text-[9px] font-bold bg-marigold/20 text-maroon border border-marigold/30 px-1.5 py-0.5 rounded cursor-help">
+                                +{remaining} more
+                              </span>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex flex-col gap-1 items-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        addedCount === expectedCount 
+                          ? 'bg-mehendi/15 text-mehendi' 
+                          : 'bg-maroon/10 text-maroon'
+                      }`}>
+                        {addedCount}/{expectedCount} Added
+                      </span>
+                      <div className="flex gap-1.5 text-[10px] text-maroon/70 font-semibold mt-0.5">
+                        <span title="Expected Adults">🧑 {family.expected_adults_count || 1}</span>
+                        {(family.expected_kids_count || 0) > 0 && <span title="Expected Kids">🧸 {family.expected_kids_count}</span>}
+                      </div>
+                    </div>
                   </td>
                   <td className="p-4 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                    {canEdit && (
-                      <div className="flex items-center justify-end space-x-1">
-                        <Link href={`/guests/${family.id}/edit`}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-marigold/15 text-maroon" title="Edit Family">
-                            ✏️
-                          </Button>
-                        </Link>
-                        <Link href={`/guests/${family.id}/add-member`}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-mehendi/15 text-mehendi" title="Add Member">
-                            ➕
-                          </Button>
-                        </Link>
-                      </div>
-                    )}
+                    {canEdit && <ActionMenu family={family} />}
                   </td>
                 </tr>
                 
@@ -464,7 +525,8 @@ function GuestTable({
                                   <span className="font-semibold text-maroon">{member.name}</span>
                                   <span className="text-maroon/50 text-[10px]">
                                     ({member.relation_to_head || 'Member'}
-                                    {member.age ? `, ${member.age} yrs` : ''})
+                                    {member.age ? `, ${member.age} yrs` : ''}
+                                    {member.gender && member.gender !== 'Unknown' ? `, ${member.gender}` : ''})
                                   </span>
                                   {canEdit && (
                                     <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1">
@@ -526,18 +588,8 @@ function FamilyCard({
             </div>
           </div>
           {canEdit && (
-            <div className="flex items-center space-x-1.5">
-              <Link href={`/guests/${family.id}/edit`}>
-                <Button variant="ghost" size="sm" className="text-maroon hover:bg-marigold/10 h-8 px-2 text-xs rounded-full">
-                  Edit ✏️
-                </Button>
-              </Link>
-              <Link href={`/guests/${family.id}/add-member`}>
-                <Button variant="ghost" size="sm" className="text-mehendi hover:bg-mehendi/10 hover:text-mehendi h-8 px-2 text-xs rounded-full">
-                  <UserPlus className="w-3.5 h-3.5 mr-1" />
-                  Add Member
-                </Button>
-              </Link>
+            <div className="flex justify-end pt-2 border-t border-marigold/10 mt-2">
+              <ActionMenu family={family} />
             </div>
           )}
         </div>
@@ -549,11 +601,47 @@ function FamilyCard({
           </div>
         )}
         
-        {(family.expected_kids_count || 0) > 0 && (
-          <div className="mt-1 text-xs font-data text-maroon/70">
-            🧸 Kids Expected: <span className="font-semibold">{family.expected_kids_count}</span>
+        <div className="mt-1.5 flex gap-3 text-xs font-data text-maroon/70">
+          <div>🧑 Adults: <span className="font-bold text-maroon">{family.expected_adults_count || 1}</span></div>
+          {(family.expected_kids_count || 0) > 0 && (
+            <div>🧸 Kids: <span className="font-bold text-maroon">{family.expected_kids_count}</span></div>
+          )}
+        </div>
+
+        <div className="mt-2.5">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-maroon/50 block mb-1">Functions Invited</span>
+          <div className="flex flex-wrap gap-1">
+            {(() => {
+              const uniqueFunctions = Array.from(new Set(
+                (family.function_attendance || [])
+                  .map(a => a.functions?.name)
+                  .filter(Boolean)
+              )) as string[]
+              
+              if (uniqueFunctions.length === 0) {
+                return <span className="text-[10px] text-maroon/40 italic">No functions assigned yet</span>
+              }
+              
+              const visible = uniqueFunctions.slice(0, 3)
+              const remaining = uniqueFunctions.length - 3
+
+              return (
+                <>
+                  {visible.map((fnName, i) => (
+                    <span key={i} title={fnName} className="text-[10px] font-semibold bg-ivory text-maroon border border-marigold/30 px-2 py-0.5 rounded-full shadow-xs truncate max-w-[120px]">
+                      {fnName}
+                    </span>
+                  ))}
+                  {remaining > 0 && (
+                    <span title={uniqueFunctions.slice(3).join(', ')} className="text-[10px] font-semibold bg-marigold/20 text-maroon border border-marigold/30 px-2 py-0.5 rounded-full shadow-xs cursor-help">
+                      +{remaining} more
+                    </span>
+                  )}
+                </>
+              )
+            })()}
           </div>
-        )}
+        </div>
       </div>
 
       <div className="mt-4 border-t border-marigold/10 pt-3">

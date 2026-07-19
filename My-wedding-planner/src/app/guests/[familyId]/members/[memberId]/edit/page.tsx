@@ -18,7 +18,7 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [authorized, setAuthorized] = useState<boolean | null>(null)
-  const [member, setMember] = useState<{ name: string, age: number | null, relation_to_head: string | null } | null>(null)
+  const [member, setMember] = useState<{ name: string, age: number | null, relation_to_head: string | null, gender: string } | null>(null)
   
   const router = useRouter()
 
@@ -61,7 +61,8 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
         setMember({
           name: memberData.name,
           age: memberData.age,
-          relation_to_head: memberData.relation_to_head
+          relation_to_head: memberData.relation_to_head,
+          gender: memberData.gender || 'Unknown'
         })
       }
       setFetching(false)
@@ -84,6 +85,7 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
         name: formData.get('name'),
         age: age ? parseInt(age as string) : null,
         relation_to_head: formData.get('relation_to_head'),
+        gender: formData.get('gender') || 'Unknown'
       })
       .eq('id', memberId)
 
@@ -143,7 +145,23 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
 
         <div className="space-y-2">
           <Label htmlFor="age">Age (Optional)</Label>
-          <Input id="age" name="age" type="number" min="0" max="120" defaultValue={member?.age ?? ''} className="bg-white border-marigold/50" />
+          <Input id="age" name="age" type="number" defaultValue={member?.age || ''} className="bg-white border-marigold/50" />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="gender">Gender</Label>
+          <select 
+            id="gender" 
+            name="gender" 
+            className="flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-marigold/50"
+            defaultValue={member?.gender || 'Unknown'}
+            key={member?.gender}
+          >
+            <option value="Unknown">Unknown</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
         </div>
 
         <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">

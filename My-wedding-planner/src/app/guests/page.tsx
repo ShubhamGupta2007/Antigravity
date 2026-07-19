@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/server'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,13 @@ export default async function GuestsPage() {
     .single()
     
   const role = dbUser?.role || 'regular'
+  const cookieStore = await cookies()
+  const isGuestView = cookieStore.get('guest_view')?.value === '1'
+  const isEffectivelyGuest = role === 'guest' || role === 'pending' || isGuestView
+  
+  if (isEffectivelyGuest) {
+    redirect('/')
+  }
   const userSide = dbUser?.side
 
   if (role !== 'admin') {
@@ -56,7 +64,13 @@ export default async function GuestsPage() {
     .from('families')
     .select(`
       *,
-      family_members (*)
+      family_members (*),
+      function_attendance (
+        function_id,
+        functions (
+          name
+        )
+      )
     `)
     .order('side')
     .order('family_name')
@@ -74,8 +88,8 @@ export default async function GuestsPage() {
 
   // Live Guest Stats Calculation
   const allFamilies = families || []
-  // Filter out Tier 1 (Hosts/Immediate family) for invited stats
-  const guestsFamilies = allFamilies.filter(f => f.relation_tier !== 'tier_1')
+  // Include all families for stats
+  const guestsFamilies = allFamilies
   const totalExpectedAdults = guestsFamilies.reduce((sum, f) => sum + (f.expected_adults_count || 1), 0)
   const totalExpectedKids = guestsFamilies.reduce((sum, f) => sum + (f.expected_kids_count || 0), 0)
   const totalExpected = totalExpectedAdults + totalExpectedKids
@@ -96,8 +110,8 @@ export default async function GuestsPage() {
   let outstationSeniorsCount = 0
 
   allFamilies.forEach(f => {
-    // Only count added members for actually invited guests
-    if (f.relation_tier !== 'tier_1') {
+    // Count added members for all families
+    {
       const addedMembersCount = f.family_members?.length || 0
       
       let localAdults = 0
@@ -143,61 +157,7 @@ export default async function GuestsPage() {
         outstationSeniorsCount += localSeniors
       }
     }
-    
-    const count = (f.expected_adults_count || 1) + (f.expected_kids_count || 0)
-    if (f.relation_tier === 'tier_2') {
-      closeFamilyCount += count
-    } else if (f.relation_tier === 'tier_3') {
-      extendedFamilyCount += count
-    }
   })
-
-  const relationshipCounts: Record<string, { total: number, adults: number, kids: number, seniors: number, outstation: number }> = {}
-  
-  allFamilies.forEach(f => {
-    if (f.relation_tier !== 'tier_1' && f.relationship) {
-      if (!relationshipCounts[f.relationship]) {
-        relationshipCounts[f.relationship] = { total: 0, adults: 0, kids: 0, seniors: 0, outstation: 0 }
-      }
-      
-      const addedMembersCount = f.family_members?.length || 0
-      let localAdults = 0
-      let localKids = 0
-      let localSeniors = 0
-      
-      if (addedMembersCount > 0) {
-        f.family_members?.forEach((m: FamilyMember) => {
-          if (m.age !== null) {
-            if (m.age < 12) localKids++
-            else if (m.age >= 60) localSeniors++
-            else localAdults++
-          } else {
-            localAdults++
-          }
-        })
-      }
-      
-      const expectedAdults = f.expected_adults_count || 1
-      const expectedKids = f.expected_kids_count || 0
-      
-      localKids += Math.max(0, expectedKids - localKids)
-      localAdults += Math.max(0, expectedAdults - localAdults - localSeniors)
-      
-      const familyTotal = localAdults + localKids + localSeniors
-      relationshipCounts[f.relationship].adults += localAdults
-      relationshipCounts[f.relationship].kids += localKids
-      relationshipCounts[f.relationship].seniors += localSeniors
-      relationshipCounts[f.relationship].total += familyTotal
-      
-      if (!f.is_local) {
-        relationshipCounts[f.relationship].outstation += familyTotal
-      }
-    }
-  })
-  
-  const topRelationships = Object.entries(relationshipCounts)
-    .sort((a, b) => b[1].total - a[1].total)
-    .slice(0, 5)
 
   return (
     <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">
@@ -254,75 +214,13 @@ export default async function GuestsPage() {
             </div>
           </div>
         </div>
-
-        {/* Row 2: Detailed Lists */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Relationships */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm">
-            <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-4">
-              🔗 Top Relationships
-            </h3>
-            {topRelationships.length > 0 ? (
-              <div className="space-y-3">
-                {topRelationships.map(([rel, stats]) => (
-                  <div key={rel} className="flex justify-between items-center text-sm font-data border-b border-marigold/5 pb-3 last:border-0 last:pb-0">
-                    <span className="font-medium text-maroon truncate pr-4">{rel}</span>
-                    <div className="flex flex-col items-end">
-                      <span className="font-bold text-maroon bg-mehendi/10 text-mehendi px-2.5 py-0.5 rounded-full text-xs">
-                        {stats.total} guests
-                      </span>
-                      {stats.outstation > 0 && (
-                        <span className="text-[9px] font-data font-semibold text-rust-red bg-rust-red/5 border border-rust-red/10 px-2 py-0.5 rounded-full mt-1.5 mb-0.5">
-                          ✈️ {stats.outstation} outstation
-                        </span>
-                      )}
-                      <div className="flex gap-2 text-[10px] font-data text-maroon/60 mt-1 uppercase tracking-wider">
-                        {stats.adults > 0 && <span>🧑 {stats.adults}</span>}
-                        {stats.kids > 0 && <span>🧸 {stats.kids}</span>}
-                        {stats.seniors > 0 && <span>👵 {stats.seniors}</span>}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-xs font-data text-maroon/50 italic py-2 text-center">
-                No relationships added yet.
-              </div>
-            )}
-          </div>
-          
-          {/* Category Tiers */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-5 shadow-sm">
-            <h3 className="text-sm font-display font-semibold text-maroon uppercase tracking-wider border-b border-marigold/15 pb-2 mb-4">
-              🏠 Category Tiers
-            </h3>
-            <div className="space-y-4">
-              <div className="bg-ivory/60 border border-marigold/15 rounded-xl p-3">
-                <div className="flex justify-between items-center text-sm font-data mb-1">
-                  <span className="font-medium text-maroon">Close Circle (Rishtedaar & Friends)</span>
-                  <span className="font-bold text-maroon bg-marigold/10 px-2 py-0.5 rounded-full text-xs">
-                    {closeFamilyCount} expected
-                  </span>
-                </div>
-                <p className="text-xs text-maroon/60 font-data italic">
-                  ↳ Attending Delhi Wedding (Jan 19) & Joint Functions.
-                </p>
-              </div>
-  
-              <div className="bg-ivory/60 border border-marigold/15 rounded-xl p-3">
-                <div className="flex justify-between items-center text-sm font-data mb-1">
-                  <span className="font-medium text-maroon">Extended Circle & Neighbors</span>
-                  <span className="font-bold text-maroon bg-marigold/5 px-2 py-0.5 rounded-full text-xs">
-                    {extendedFamilyCount} expected
-                  </span>
-                </div>
-                <p className="text-xs text-maroon/60 font-data italic">
-                  ↳ Local guests attending selected functions.
-                </p>
-              </div>
-            </div>
-          </div>
+        
+        <div className="flex justify-center mt-2">
+          <Link href="/guests/analytics">
+            <Button variant="outline" className="border-marigold/40 text-maroon hover:bg-marigold/10 rounded-full text-sm font-semibold px-6 shadow-sm">
+              View Detailed Analytics 📊
+            </Button>
+          </Link>
         </div>
       </section>
 

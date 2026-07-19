@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, Calendar, MapPin, IndianRupee, Clock, Users } from 'lucide-react'
 import { format } from 'date-fns'
 import DeleteFunctionButton from './DeleteFunctionButton'
+import FunctionGiftingRules from './FunctionGiftingRules'
 
 export default async function FunctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
@@ -38,16 +39,27 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   const overbudget = totalSpent > maxBudget
 
   // Fetch invited guests attendance details
-  const { data: attendance } = await supabase
+  const { data: attendance, error: attendanceError } = await supabase
     .from('function_attendance')
     .select(`
       id,
       family_id,
       member_id,
-      families (family_name, side, expected_adults_count, expected_kids_count, is_local),
-      family_members (name, age)
+      families (family_name, side, expected_adults_count, expected_kids_count, is_local, relation_tier),
+      family_members (name, age, gender)
     `)
     .eq('function_id', func.id)
+
+  if (attendanceError) {
+    console.error('Error fetching function_attendance:', attendanceError)
+  }
+
+  // Fetch gifting rules
+  const { data: giftingRules } = await supabase
+    .from('function_gifting_rules')
+    .select('*')
+    .eq('function_id', func.id)
+    .order('created_at')
 
   // Fetch required guests rules
   const { data: requiredRules } = await supabase
@@ -76,6 +88,8 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   let estimatedAdults = 0
   let estimatedKids = 0
   let estimatedSeniors = 0
+  let estimatedMales = 0
+  let estimatedFemales = 0
   let outstationCount = 0
   let roomsRequired = 0
 
@@ -90,6 +104,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     if (members.length > 0) {
       members.forEach((m: any) => {
         const age = m.family_members?.age
+        const gender = m.family_members?.gender
         if (age !== null && age !== undefined) {
           if (age < 12) localKids++
           else if (age >= 60) localSeniors++
@@ -97,10 +112,16 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
         } else {
           localAdults++
         }
+        
+        if (gender === 'Male') estimatedMales++
+        else if (gender === 'Female') estimatedFemales++
       })
     } else {
       localAdults = familyDetails?.expected_adults_count || 1
       localKids = familyDetails?.expected_kids_count || 0
+      
+      // If no members are explicitly added, we can't accurately estimate gender
+      // We could split adults 50/50, but let's leave it to explicit members for accuracy.
     }
 
     estimatedAdults += localAdults
@@ -169,6 +190,19 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
 
   return (
     <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">
+      {/* Database Error Banner */}
+      {attendanceError && (
+        <div className="bg-rust-red/10 border border-rust-red p-4 rounded-xl mb-6 shadow-sm flex items-start space-x-3">
+          <span className="text-xl">🚨</span>
+          <div>
+            <h3 className="font-semibold text-rust-red font-display text-sm">Database Error Detected</h3>
+            <p className="text-xs text-rust-red/80 font-data mt-0.5">
+              We couldn't fetch the guest list. Have you run the <b>06_gifting_rules.sql</b> migration script in your Supabase SQL editor? The app requires the new `gender` column to load attendance!
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Alert Banner for Missing Required Guests */}
       {hasRequiredAlert && (
         <div className="bg-rust-red/10 border-l-4 border-rust-red p-4 rounded-r-xl mb-6 shadow-sm flex items-start space-x-3">
@@ -293,6 +327,23 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                       </div>
                     )}
                   </div>
+
+                  {/* Gender Breakdown (if available) */}
+                  {(estimatedMales > 0 || estimatedFemales > 0) && (
+                    <>
+                      <div className="w-px h-10 bg-marigold/30 hidden md:block"></div>
+                      <div className="flex gap-4">
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-semibold text-maroon/70">Gents</p>
+                          <p className="text-lg font-data font-semibold text-maroon">👨 {estimatedMales}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider font-semibold text-maroon/70">Ladies</p>
+                          <p className="text-lg font-data font-semibold text-maroon">👩 {estimatedFemales}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   
                   <div className="w-px h-10 bg-marigold/30 hidden md:block"></div>
                   
@@ -341,6 +392,14 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               </div>
             )}
           </section>
+
+          {/* Dynamic Gifting Rules Section */}
+          <FunctionGiftingRules 
+            functionId={func.id} 
+            initialRules={giftingRules || []} 
+            families={attendingFamilyCards} 
+            members={attendingMembers} 
+          />
         </div>
 
         {/* Right Column: Required Validation Panel & Budget */}

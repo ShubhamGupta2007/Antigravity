@@ -32,6 +32,14 @@ export default function GlobalNavigation() {
   const [role, setRole] = useState<string | null>(null)
   
   useEffect(() => {
+    // Sync initial state from cookie
+    const guestCookie = document.cookie.split('; ').find(row => row.startsWith('guest_view='))
+    if (guestCookie && guestCookie.split('=')[1] === '1') {
+      setIsGuestView(true)
+    }
+  }, [])
+
+  useEffect(() => {
     async function loadRole() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -58,6 +66,7 @@ export default function GlobalNavigation() {
   })
 
   const handleLogout = async () => {
+    document.cookie = 'guest_view=0; path=/; max-age=0' // Clear cookie on logout
     await supabase.auth.signOut()
     toast.success("Logged out successfully")
     router.push('/login')
@@ -133,20 +142,28 @@ export default function GlobalNavigation() {
 
         <div className="p-4 mt-auto border-t border-marigold/30 space-y-2">
           {/* Guest View Toggle - Only visible to admins and planners */}
-          {(role === 'admin' || role === 'planner') && (
-            <button
-              onClick={() => setIsGuestView(!isGuestView)}
-              className="w-full flex justify-between items-center px-4 py-3 rounded-2xl hover:bg-marigold/15 transition-all duration-200 group"
-            >
-              <div className="flex items-center gap-3">
-                {isGuestView ? <Eye className="w-5 h-5 text-maroon" /> : <EyeOff className="w-5 h-5 text-maroon/60" />}
-                <span className="font-bold text-maroon/80 group-hover:text-maroon text-sm">Guest Mode</span>
-              </div>
-              <div className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}>
-                <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")} />
-              </div>
-            </button>
-          )}
+            {(role === 'admin' || role === 'planner') && (
+              <button
+                onClick={() => {
+                  const newState = !isGuestView;
+                  setIsGuestView(newState);
+                  // Set or clear a cookie so server‑less pages can see guest mode
+                  document.cookie = `guest_view=${newState ? '1' : '0'}; path=/; max-age=86400`;
+                  router.refresh();
+                }}
+                className="w-full flex justify-between items-center px-4 py-3 rounded-2xl hover:bg-marigold/15 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  {isGuestView ? <Eye className="w-5 h-5 text-maroon" /> : <EyeOff className="w-5 h-5 text-maroon/60" />}
+                  <span className="font-bold text-maroon/80 group-hover:text-maroon text-sm">Guest Mode</span>
+                </div>
+                <div className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}
+                >
+                  <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")}
+                  />
+                </div>
+              </button>
+            )}
 
           <button
             onClick={handleLogout}

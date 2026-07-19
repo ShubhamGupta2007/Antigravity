@@ -64,13 +64,6 @@ export default async function FunctionsPage() {
           </Link>
           <h1 className="text-2xl font-display font-semibold text-maroon">Functions</h1>
         </div>
-        {canAdd && (
-          <Link href="/functions/add">
-            <Button size="icon" className="bg-maroon text-ivory hover:bg-maroon/90 rounded-full w-10 h-10 shadow-md">
-              <Plus className="w-5 h-5" />
-            </Button>
-          </Link>
-        )}
       </header>
 
       {visibleFunctions.length === 0 ? (
@@ -124,6 +117,16 @@ export default async function FunctionsPage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Floating Action Button */}
+      {canAdd && (
+        <Link href="/functions/add">
+          <div className="fixed bottom-20 md:bottom-8 right-6 z-40 bg-maroon text-ivory px-6 py-4 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:scale-105 hover:bg-maroon/90 transition-all flex items-center justify-center cursor-pointer group border border-marigold/20">
+            <Plus className="w-5 h-5 mr-2" />
+            <span className="font-bold text-sm">Add Function</span>
+          </div>
+        </Link>
       )}
     </main>
   )

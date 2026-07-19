@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { SignOutButton } from '@/components/SignOutButton'
 import { WeddingCountdown } from '@/components/WeddingCountdown'
 import { Users, Wallet, CalendarHeart, ListTodo, Bell, Image as ImageIcon } from 'lucide-react'
@@ -25,13 +26,19 @@ export default async function Home() {
     .single()
 
   const isAdmin = dbUser?.role === 'admin'
+  const cookieStore = await cookies()
+  const guestView = cookieStore.get('guest_view')?.value === '1'
+  const isEffectivelyGuest = dbUser?.role === 'guest' || dbUser?.role === 'pending' || guestView
+
   const features = [
-    ...(isAdmin ? [
+    ...(isAdmin && !isEffectivelyGuest ? [
       { name: 'Guest List', icon: Users, href: '/guests', color: 'bg-marigold/20 text-maroon' },
       { name: 'Budget', icon: Wallet, href: '/budget', color: 'bg-mehendi/20 text-mehendi' },
     ] : []),
     { name: 'Functions', icon: CalendarHeart, href: '/functions', color: 'bg-rani-pink/20 text-rani-pink' },
-    { name: 'Tasks', icon: ListTodo, href: '/tasks', color: 'bg-rust-red/20 text-rust-red' },
+    ...(!isEffectivelyGuest ? [
+      { name: 'Tasks', icon: ListTodo, href: '/tasks', color: 'bg-rust-red/20 text-rust-red' },
+    ] : []),
     { name: 'Photos', icon: ImageIcon, href: '/photos', color: 'bg-maroon/20 text-maroon' },
   ]
 

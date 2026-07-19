@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Plus, Settings, Pencil } from 'lucide-react'
@@ -42,6 +43,14 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   const { data: dbUser } = await supabase.from('users').select('side, role').eq('id', user.id).single()
   const side = dbUser?.side
   const role = dbUser?.role || 'regular'
+
+  const cookieStore = await cookies()
+  const isGuestView = cookieStore.get('guest_view')?.value === '1'
+  const isEffectivelyGuest = role === 'guest' || role === 'pending' || isGuestView
+
+  if (isEffectivelyGuest) {
+    redirect('/')
+  }
 
   // Access validation:
   const isAdmin = role === 'admin' || role === 'bride' || role === 'groom'
@@ -260,11 +269,6 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
               </Button>
             </Link>
           )}
-          <Link href="/budget/add">
-            <Button className="bg-maroon text-ivory hover:bg-maroon/90 text-xs py-1 h-8 shadow-sm font-medium">
-              💸 Log Expense
-            </Button>
-          </Link>
         </div>
       </header>
 
@@ -635,6 +639,14 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
           </div>
         </section>
       )}
+
+      {/* Floating Action Button */}
+      <Link href="/budget/add">
+        <div className="fixed bottom-20 md:bottom-8 right-6 z-40 bg-maroon text-ivory px-6 py-4 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:scale-105 hover:bg-maroon/90 transition-all flex items-center justify-center cursor-pointer group border border-marigold/20">
+          <Plus className="w-5 h-5 mr-2" />
+          <span className="font-bold text-sm">Log Expense</span>
+        </div>
+      </Link>
     </main>
   )
 }

@@ -65,6 +65,7 @@ export default function AddMemberPage({ params }: { params: Promise<{ familyId: 
         name: formData.get('name'),
         age: age ? parseInt(age as string) : null,
         relation_to_head: formData.get('relation_to_head'),
+        gender: formData.get('gender') || 'Unknown'
       })
 
     if (insertError) {
@@ -112,7 +113,22 @@ export default function AddMemberPage({ params }: { params: Promise<{ familyId: 
 
         <div className="space-y-2">
           <Label htmlFor="age">Age (Optional)</Label>
-          <Input id="age" name="age" type="number" min="0" max="120" className="bg-white border-marigold/50" />
+          <Input id="age" name="age" type="number" placeholder="e.g. 35" className="bg-white border-marigold/50" />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="gender">Gender</Label>
+          <select 
+            id="gender" 
+            name="gender" 
+            className="flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-marigold/50"
+            defaultValue="Unknown"
+          >
+            <option value="Unknown">Unknown</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
         </div>
 
         <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">
