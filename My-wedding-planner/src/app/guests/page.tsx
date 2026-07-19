@@ -12,6 +12,7 @@ type FamilyMember = {
   name: string
   age: number | null
   relation_to_head: string | null
+  gender: string
 }
 
 type Family = {
