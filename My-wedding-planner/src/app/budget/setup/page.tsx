@@ -53,7 +53,10 @@ export default function BudgetSetupPage() {
 
   const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [editingEmojiId, setEditingEmojiId] = useState<string | null>(null)
   const [tempDescription, setTempDescription] = useState('')
+  
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   
   const router = useRouter()
 
@@ -139,11 +142,14 @@ export default function BudgetSetupPage() {
       }
 
       setLoading(false)
+      // Reset after initial load
+      setTimeout(() => setHasUnsavedChanges(false), 100)
     }
     fetchData()
   }, [router, supabase])
 
   const handleBudgetChange = (categoryId: string, value: string) => {
+    setHasUnsavedChanges(true)
     setBudgets(prev => ({
       ...prev,
       [categoryId]: Number(value)
@@ -151,6 +157,7 @@ export default function BudgetSetupPage() {
   }
 
   const handleDescriptionChange = (categoryId: string, value: string) => {
+    setHasUnsavedChanges(true)
     setDescriptions(prev => ({
       ...prev,
       [categoryId]: value
@@ -251,15 +258,16 @@ export default function BudgetSetupPage() {
       return
     }
 
-    // 2. Update category descriptions
-    for (const [id, desc] of Object.entries(descriptions)) {
+    // 2. Update category descriptions and emojis
+    for (const cat of categories) {
+      const desc = descriptions[cat.id] || null
       const { error: descError } = await supabase
         .from('categories')
-        .update({ description: desc || null })
-        .eq('id', id)
+        .update({ description: desc, emoji: cat.emoji })
+        .eq('id', cat.id)
       
       if (descError) {
-        setError(`Failed to save description for category: ${descError.message}`)
+        setError(`Failed to save details for category: ${descError.message}`)
         setSaving(false)
         return
       }
@@ -318,6 +326,7 @@ export default function BudgetSetupPage() {
       }
     }
 
+    setHasUnsavedChanges(false)
     router.push('/budget')
     router.refresh()
   }
@@ -430,8 +439,26 @@ export default function BudgetSetupPage() {
                   {/* Category Header */}
                   <div className="flex justify-between items-center gap-4">
                     <div className="flex items-center space-x-3.5 flex-1 min-w-0">
-                      <div className="w-12 h-12 rounded-full bg-ivory border border-marigold/40 flex items-center justify-center text-2xl shadow-sm flex-shrink-0">
-                        {category.emoji}
+                      <div 
+                        className="bg-ivory border border-marigold/40 w-12 h-12 rounded-full flex items-center justify-center text-2xl shadow-sm cursor-pointer hover:bg-marigold/20 relative flex-shrink-0"
+                        onClick={() => setEditingEmojiId(editingEmojiId === category.id ? null : category.id)}
+                        title="Click to change emoji"
+                      >
+                        {category.emoji || '💸'}
+                        {editingEmojiId === category.id && (
+                          <div className="absolute top-12 left-0 z-50" onClick={e => e.stopPropagation()}>
+                            <div className="fixed inset-0 bg-transparent" onClick={() => setEditingEmojiId(null)} />
+                            <div className="relative">
+                              <EmojiPicker 
+                                onEmojiClick={(e) => {
+                                  setHasUnsavedChanges(true)
+                                  setCategories(prev => prev.map(c => c.id === category.id ? { ...c, emoji: e.emoji } : c))
+                                  setEditingEmojiId(null)
+                                }} 
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="font-display font-bold text-base md:text-lg text-maroon block truncate">{category.name}</span>
@@ -521,14 +548,21 @@ export default function BudgetSetupPage() {
         </div>
       </div>
 
-      <Button 
-        onClick={handleSave} 
-        disabled={saving} 
-        className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-8 shadow-md"
-      >
-        <Save className="w-4 h-4 mr-2" />
-        {saving ? 'Saving...' : 'Save & Exit'}
-      </Button>
+      <div className="relative mt-8">
+        {hasUnsavedChanges && (
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-marigold text-maroon text-xs md:text-sm font-bold px-4 py-2 rounded-full shadow-lg animate-bounce whitespace-nowrap border-2 border-ivory">
+            ⚠️ You have unsaved changes!
+          </div>
+        )}
+        <Button 
+          onClick={handleSave} 
+          disabled={saving} 
+          className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 shadow-md"
+        >
+          <Save className="w-4 h-4 mr-2" />
+          {saving ? 'Saving...' : 'Save & Exit'}
+        </Button>
+      </div>
 
       {/* Description Popup Modal */}
       {editingDescriptionId && (() => {

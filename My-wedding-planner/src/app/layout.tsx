@@ -30,6 +30,7 @@ export const metadata: Metadata = {
 
 import { Toaster } from "sonner";
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import MainLayoutWrapper from "@/components/MainLayoutWrapper";
 
 export default function RootLayout({
   children,
@@ -42,8 +43,10 @@ export default function RootLayout({
       className={cn("h-full", "antialiased", cormorant.variable, poppins.variable, dmSans.variable, "font-sans", geist.variable)}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col font-sans bg-ivory text-maroon" suppressHydrationWarning>
-        {children}
+      <body className="min-h-full font-sans bg-ivory text-maroon" suppressHydrationWarning>
+        <MainLayoutWrapper>
+          {children}
+        </MainLayoutWrapper>
         <Toaster position="bottom-right" richColors />
         <SpeedInsights />
       </body>
