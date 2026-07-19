@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -29,6 +29,33 @@ export default function GlobalNavigation() {
   ]
 
   const [isGuestView, setIsGuestView] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
+  
+  useEffect(() => {
+    async function loadRole() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+        
+      if (dbUser) {
+        setRole(dbUser.role)
+      }
+    }
+    loadRole()
+  }, [supabase])
+
+  const visibleNavItems = navItems.filter(item => {
+    // If they are a guest (or pending) or have toggled guest view, hide Budget and Guests
+    if ((role === 'guest' || role === 'pending' || isGuestView) && (item.name === 'Budget' || item.name === 'Guests')) {
+      return false
+    }
+    return true
+  })
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -40,7 +67,7 @@ export default function GlobalNavigation() {
     <>
       {/* Mobile Bottom Tab Bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-marigold/30 z-50 px-6 py-3 pb-safe flex justify-between items-center shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
           return (
             <Link 
@@ -82,7 +109,7 @@ export default function GlobalNavigation() {
         </div>
 
         <div className="flex-1 flex flex-col gap-2 px-4 py-6 mt-4">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
               <Link
@@ -105,19 +132,21 @@ export default function GlobalNavigation() {
         </div>
 
         <div className="p-4 mt-auto border-t border-marigold/30 space-y-2">
-          {/* Guest View Toggle */}
-          <button
-            onClick={() => setIsGuestView(!isGuestView)}
-            className="w-full flex justify-between items-center px-4 py-3 rounded-2xl hover:bg-marigold/15 transition-all duration-200 group"
-          >
-            <div className="flex items-center gap-3">
-              {isGuestView ? <Eye className="w-5 h-5 text-maroon" /> : <EyeOff className="w-5 h-5 text-maroon/60" />}
-              <span className="font-bold text-maroon/80 group-hover:text-maroon text-sm">Guest Mode</span>
-            </div>
-            <div className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}>
-              <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")} />
-            </div>
-          </button>
+          {/* Guest View Toggle - Only visible to admins and planners */}
+          {(role === 'admin' || role === 'planner') && (
+            <button
+              onClick={() => setIsGuestView(!isGuestView)}
+              className="w-full flex justify-between items-center px-4 py-3 rounded-2xl hover:bg-marigold/15 transition-all duration-200 group"
+            >
+              <div className="flex items-center gap-3">
+                {isGuestView ? <Eye className="w-5 h-5 text-maroon" /> : <EyeOff className="w-5 h-5 text-maroon/60" />}
+                <span className="font-bold text-maroon/80 group-hover:text-maroon text-sm">Guest Mode</span>
+              </div>
+              <div className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}>
+                <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")} />
+              </div>
+            </button>
+          )}
 
           <button
             onClick={handleLogout}

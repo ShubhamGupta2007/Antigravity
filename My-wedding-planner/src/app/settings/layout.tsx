@@ -4,23 +4,55 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { User, Wallet, Shield, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [isGuestView, setIsGuestView] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
+  
+  const [supabase] = useState(() => createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  ))
+
+  useEffect(() => {
+    async function loadRole() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      const { data: dbUser } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+        
+      if (dbUser) {
+        setRole(dbUser.role)
+      }
+    }
+    loadRole()
+  }, [supabase])
 
   const navItems = [
     { name: 'Profile', href: '/settings/profile', icon: User },
-    { name: 'Budget', href: '/settings/budget', icon: Wallet },
     { name: 'Users', href: '/settings/users', icon: Shield },
   ]
+
+  const visibleNavItems = navItems.filter(item => {
+    // Only full Admins can see the Users tab
+    if (item.name === 'Users' && role !== 'admin') {
+      return false
+    }
+    return true
+  })
 
   return (
     <main className="min-h-screen flex flex-col md:flex-row max-w-6xl mx-auto bg-ivory pb-24 md:pb-0 w-full">
       {/* Mobile Top Navigation */}
       <div className="md:hidden flex overflow-x-auto p-4 border-b border-marigold/30 bg-ivory gap-2 no-scrollbar shrink-0">
-        {navItems.map(item => {
+        {visibleNavItems.map(item => {
           const isActive = pathname === item.href
           return (
             <Link key={item.name} href={item.href} className="shrink-0">
@@ -41,7 +73,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <h2 className="text-2xl font-display font-bold text-maroon mb-6">Settings</h2>
         
         <nav className="space-y-2 flex-1">
-          {navItems.map(item => {
+          {visibleNavItems.map(item => {
             const isActive = pathname === item.href
             return (
               <Link key={item.name} href={item.href}>
@@ -58,26 +90,25 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             )
           })}
         </nav>
-
-        {/* Mobile-only guest toggle placed here for consistency in the tree, though it's technically a desktop sidebar element */}
-        {/* Wait, guest toggle is already in the global sidebar on desktop. So we only need it on mobile. */}
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-x-hidden">
         {/* Mobile Guest Toggle */}
-        <div className="md:hidden p-4 border-b border-marigold/10 bg-white/50 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <Eye className="w-4 h-4 text-maroon" />
-            <span className="font-bold text-maroon text-sm">Preview as Guest</span>
+        {(role === 'admin' || role === 'planner') && (
+          <div className="md:hidden p-4 border-b border-marigold/10 bg-white/50 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-maroon" />
+              <span className="font-bold text-maroon text-sm">Preview as Guest</span>
+            </div>
+            <button 
+              onClick={() => setIsGuestView(!isGuestView)}
+              className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}
+            >
+              <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")} />
+            </button>
           </div>
-          <button 
-            onClick={() => setIsGuestView(!isGuestView)}
-            className={cn("flex w-10 h-5 rounded-full p-1 transition-colors duration-300", isGuestView ? "bg-maroon" : "bg-marigold/50")}
-          >
-            <div className={cn("w-3 h-3 bg-white rounded-full transition-transform duration-300", isGuestView ? "translate-x-5" : "translate-x-0")} />
-          </button>
-        </div>
+        )}
 
         <div className="p-4 md:p-8">
           {children}

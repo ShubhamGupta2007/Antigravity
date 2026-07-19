@@ -6,6 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ShieldAlert, ShieldCheck, UserX, UserCheck, Search } from 'lucide-react'
 
@@ -22,6 +23,7 @@ export default function UsersManagementPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const router = useRouter()
 
   const supabase = createBrowserClient(
@@ -32,10 +34,13 @@ export default function UsersManagementPage() {
   const loadUsers = async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
+    
     if (!user) {
       router.push('/login')
       return
     }
+    
+    setCurrentUserId(user.id)
 
     // Check if current user is admin
     const { data: currentUser } = await supabase
@@ -79,7 +84,8 @@ export default function UsersManagementPage() {
     if (error) {
       toast.error(`Failed to update role: ${error.message}`)
     } else {
-      toast.success(`User role updated to ${newRole === 'admin' ? 'Planner' : 'Guest'}!`)
+      const roleNames: Record<string, string> = { admin: 'Super Admin', planner: 'Planner', guest: 'Guest' }
+      toast.success(`User role updated to ${roleNames[newRole] || newRole}!`)
       loadUsers()
       router.refresh()
     }
@@ -163,10 +169,13 @@ export default function UsersManagementPage() {
                   </td>
                   <td className="p-4">
                     {u.role === 'pending' && (
-                      <Badge className="bg-marigold text-maroon hover:bg-marigold">Pending Planner</Badge>
+                      <Badge className="bg-marigold text-maroon hover:bg-marigold">Pending Access</Badge>
                     )}
                     {u.role === 'admin' && (
-                      <Badge className="bg-maroon text-ivory hover:bg-maroon">Planner</Badge>
+                      <Badge className="bg-maroon text-ivory hover:bg-maroon">Super Admin</Badge>
+                    )}
+                    {u.role === 'planner' && (
+                      <Badge className="bg-mehendi text-ivory hover:bg-mehendi">Planner</Badge>
                     )}
                     {(u.role === 'guest' || !u.role) && (
                       <Badge variant="outline" className="text-maroon/60 border-maroon/20">Guest</Badge>
@@ -177,10 +186,10 @@ export default function UsersManagementPage() {
                       <>
                         <Button 
                           size="sm" 
-                          onClick={() => handleUpdateRole(u.id, 'admin')}
+                          onClick={() => handleUpdateRole(u.id, 'planner')}
                           className="bg-mehendi text-ivory hover:bg-mehendi/90 h-8 text-xs"
                         >
-                          <ShieldCheck className="w-3 h-3 mr-1" /> Approve
+                          <ShieldCheck className="w-3 h-3 mr-1" /> Approve (Planner)
                         </Button>
                         <Button 
                           size="sm" 
@@ -193,25 +202,39 @@ export default function UsersManagementPage() {
                       </>
                     )}
                     
-                    {u.role === 'guest' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleUpdateRole(u.id, 'admin')}
-                        className="border-marigold text-maroon hover:bg-marigold/10 h-8 text-xs"
-                      >
-                        <UserCheck className="w-3 h-3 mr-1" /> Make Planner
-                      </Button>
+                    {(u.role === 'guest' || u.role === 'planner') && (
+                      <>
+                        {u.role === 'guest' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleUpdateRole(u.id, 'planner')}
+                            className="border-mehendi text-mehendi hover:bg-mehendi/10 h-8 text-xs mr-2"
+                          >
+                            <UserCheck className="w-3 h-3 mr-1" /> Make Planner
+                          </Button>
+                        )}
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleUpdateRole(u.id, 'admin')}
+                          className="border-marigold text-maroon hover:bg-marigold/10 h-8 text-xs"
+                        >
+                          <ShieldAlert className="w-3 h-3 mr-1" /> Make Admin
+                        </Button>
+                      </>
                     )}
 
-                    {u.role === 'admin' && (
+                    {(u.role === 'admin' || u.role === 'planner') && (
                       <Button 
                         size="sm" 
                         variant="ghost"
                         onClick={() => handleUpdateRole(u.id, 'guest')}
-                        className="text-maroon/40 hover:text-maroon/80 h-8 text-xs px-2"
+                        disabled={u.id === currentUserId}
+                        className={cn("text-maroon/40 hover:text-maroon/80 h-8 text-xs px-2", u.id === currentUserId && "opacity-30 cursor-not-allowed")}
+                        title={u.id === currentUserId ? "You cannot revoke your own access" : ""}
                       >
-                        <UserX className="w-3 h-3 mr-1" /> Revoke
+                        <UserX className="w-3 h-3 mr-1" /> Revoke to Guest
                       </Button>
                     )}
                   </td>

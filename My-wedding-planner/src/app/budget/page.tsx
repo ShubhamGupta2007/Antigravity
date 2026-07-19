@@ -254,13 +254,6 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
         </div>
         <div className="flex items-center space-x-2">
           {isAdmin && (
-            <Link href="/settings/budget">
-              <Button variant="ghost" size="icon" className="text-maroon/50 hover:text-maroon hover:bg-marigold/10" title="Permissions Settings">
-                <Settings className="w-4 h-4" />
-              </Button>
-            </Link>
-          )}
-          {isAdmin && (
             <Link href="/budget/setup">
               <Button variant="outline" className="border-marigold/40 text-maroon hover:bg-marigold/10 text-xs py-1 h-8">
                 ⚙️ Setup Limits

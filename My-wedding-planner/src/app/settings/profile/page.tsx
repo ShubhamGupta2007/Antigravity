@@ -145,7 +145,7 @@ export default function ProfileSettingsPage() {
               Account Role
             </Label>
             <Input 
-              value={role === 'admin' ? 'Planner' : role === 'pending' ? 'Pending Approval...' : 'Guest'} 
+              value={role === 'admin' ? 'Super Admin' : role === 'planner' ? 'Planner' : role === 'pending' ? 'Pending Approval...' : 'Guest'} 
               disabled
               className="border-marigold/30 bg-gray-100 text-gray-500 cursor-not-allowed font-semibold"
             />
@@ -168,8 +168,10 @@ export default function ProfileSettingsPage() {
               </div>
             )}
             
-            {role === 'admin' && (
-              <p className="text-[10px] md:text-xs text-maroon/50 font-data leading-tight">You have full Planner access.</p>
+            {(role === 'admin' || role === 'planner') && (
+              <p className="text-[10px] md:text-xs text-maroon/50 font-data leading-tight">
+                {role === 'admin' ? 'You have full Super Admin access.' : 'You have full Planner access.'}
+              </p>
             )}
           </div>
         </div>
