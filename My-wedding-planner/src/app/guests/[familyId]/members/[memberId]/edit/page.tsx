@@ -42,7 +42,7 @@ export default function EditMemberPage({ params }: { params: Promise<{ familyId:
         .eq('id', user.id)
         .single()
         
-      if (profile?.role !== 'admin') {
+      if ((profile?.role !== 'admin' && profile?.role !== 'planner')) {
         router.push('/guests')
         return
       } else {

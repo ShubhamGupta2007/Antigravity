@@ -57,7 +57,7 @@ export default async function GuestsPage() {
   }
   const userSide = dbUser?.side
 
-  if (role !== 'admin') {
+  if ((role !== 'admin' && role !== 'planner')) {
     redirect('/')
   }
 

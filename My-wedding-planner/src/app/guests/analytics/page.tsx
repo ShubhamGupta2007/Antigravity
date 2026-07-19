@@ -35,7 +35,7 @@ export default async function GuestAnalyticsPage() {
   const isGuestView = cookieStore.get('guest_view')?.value === '1'
   const isEffectivelyGuest = role === 'guest' || role === 'pending' || isGuestView
   
-  if (isEffectivelyGuest || role !== 'admin') {
+  if (isEffectivelyGuest || (role !== 'admin' && role !== 'planner')) {
     redirect('/guests')
   }
 

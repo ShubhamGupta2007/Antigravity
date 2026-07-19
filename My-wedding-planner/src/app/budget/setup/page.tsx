@@ -75,7 +75,7 @@ export default function BudgetSetupPage() {
 
       // Fetch user side and role
       const { data: dbUser } = await supabase.from('users').select('side, role').eq('id', user.id).single()
-      if (dbUser?.role !== 'admin' && dbUser?.role !== 'bride' && dbUser?.role !== 'groom') {
+      if ((dbUser?.role !== 'admin' && dbUser?.role !== 'bride' && dbUser?.role !== 'groom' && dbUser?.role !== 'planner')) {
         router.push('/')
         return
       }

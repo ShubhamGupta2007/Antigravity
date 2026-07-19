@@ -45,7 +45,7 @@ export default function EditExpenseForm({ params }: { params: Promise<{ expense_
       }
 
       const { data: dbUser } = await supabase.from('users').select('role').eq('id', user.id).single()
-      if (dbUser?.role !== 'admin' && dbUser?.role !== 'bride' && dbUser?.role !== 'groom') {
+      if ((dbUser?.role !== 'admin' && dbUser?.role !== 'bride' && dbUser?.role !== 'groom' && dbUser?.role !== 'planner')) {
         router.push('/')
         return
       }

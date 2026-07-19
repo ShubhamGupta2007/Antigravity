@@ -47,11 +47,11 @@ export default async function FunctionsPage() {
       }
     })
     .filter(f => {
-      if (role === 'admin' || role === 'bride' || role === 'groom') return true
+      if (role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom') return true
       return f.hosting_side === side || f.hosting_side === 'joint'
     })
 
-  const canAdd = role === 'admin' || role === 'bride' || role === 'groom' || side
+  const canAdd = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom' || side
 
   return (
     <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">

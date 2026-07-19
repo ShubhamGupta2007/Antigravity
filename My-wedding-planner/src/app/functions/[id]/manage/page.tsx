@@ -38,7 +38,7 @@ export default async function ManageInvitesPage({ params }: PageProps) {
 
   const userSide = dbUser?.side
   const role = dbUser?.role || 'regular'
-  const isAdmin = role === 'admin' || role === 'bride' || role === 'groom'
+  const isAdmin = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom'
 
   // Access validation: regular family members can only manage if it matches their side or is joint
   const canManage = isAdmin || func.hosting_side === 'joint' || func.hosting_side === userSide
