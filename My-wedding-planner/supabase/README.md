@@ -12,6 +12,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `10_rsvp.sql` | RSVP status (invited / confirmed / declined) per family per function |
 | `11_shagun_received.sql` | shagun / gifts received from guests, per function (hosts only) |
 | `12_ritual_budget.sql` | ritual items' estimated cost as an auto "Ritual items" budget line |
+| `13_tasks_links.sql` | tasks linked to functions; every due payment becomes a task (kept in step automatically) |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.
