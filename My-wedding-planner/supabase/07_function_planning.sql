@@ -90,6 +90,32 @@ create policy "Managers can write gifting rules" on public.function_gifting_rule
   using (public.is_function_manager())
   with check (public.is_function_manager());
 
+-- Per-family quantity for a gifting rule, e.g. "Sharma family gets 2 bhaji boxes".
+-- When set, it replaces the rule's automatic count for that family (0 = none).
+create table if not exists public.function_gift_counts (
+  id uuid primary key default gen_random_uuid(),
+  function_id uuid not null references public.functions(id) on delete cascade,
+  rule_id uuid not null references public.function_gifting_rules(id) on delete cascade,
+  family_id uuid not null references public.families(id) on delete cascade,
+  quantity integer not null check (quantity >= 0),
+  created_at timestamptz not null default now(),
+  unique (rule_id, family_id)
+);
+
+create index if not exists function_gift_counts_function_id_idx on public.function_gift_counts(function_id);
+
+alter table public.function_gift_counts enable row level security;
+
+drop policy if exists "Authenticated can view gift counts" on public.function_gift_counts;
+create policy "Authenticated can view gift counts" on public.function_gift_counts
+  for select to authenticated using (true);
+
+drop policy if exists "Managers can write gift counts" on public.function_gift_counts;
+create policy "Managers can write gift counts" on public.function_gift_counts
+  for all to authenticated
+  using (public.is_function_manager())
+  with check (public.is_function_manager());
+
 -- ---------------------------------------------------------------------------
 -- 5. Function schedule: timed parts within a function (Baraat, Milni, Pheras...)
 -- ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@ and mark guesses as unconfirmed.
 | Column | Meaning | Status |
 |---|---|---|
 | Members | Number of people in that household attending | confirmed by totals (127) |
-| Bhaji Box | Sweets/bhaji boxes for that household | unconfirmed: what it is and who gives it |
+| Bhaji Box | Number of bhaji (sweets) boxes for that household; each box has a price | price per box: ask |
 | Amount (₹) | Lifafa amount for that household | unconfirmed: given to them, or shagun received |
 
 Page totals: members 127, amount ₹1,02,900 (both match the rows). Boxes: rows add up to 59;

@@ -14,6 +14,7 @@ import {
   functionHeadcount,
   parseEventDate,
   type FunctionSegment,
+  type GiftCount,
   type GiftOverride,
   type GiftingRule,
   type PlanningAttendance,
@@ -79,17 +80,18 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     console.error('Error fetching function_attendance:', attendanceError)
   }
 
-  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes] = await Promise.all([
+  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes] = await Promise.all([
     supabase.from('function_gifting_rules').select('*').eq('function_id', func.id).order('created_at'),
     supabase.from('function_gift_overrides').select('*').eq('function_id', func.id),
     supabase.from('function_segments').select('*').eq('function_id', func.id),
     supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1),
-    supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order')
+    supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order'),
+    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id)
   ])
   if (ritualsRes.error) {
     console.error('Error fetching rituals:', ritualsRes.error)
   }
-  const planningError = overridesRes.error || segmentsRes.error
+  const planningError = overridesRes.error || segmentsRes.error || giftCountsRes.error
   if (planningError) {
     console.error('Error fetching function planning data:', planningError)
   }
@@ -439,6 +441,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
             canEdit={isManager}
             initialRules={(giftingRulesRes.data || []) as GiftingRule[]}
             initialOverrides={(overridesRes.data || []) as GiftOverride[]}
+            giftCounts={(giftCountsRes.data || []) as GiftCount[]}
             families={planningFamilies}
             attendance={attendanceRows}
             storedLifafaTotal={Number(func.planned_lifafa_total) || 0}

@@ -192,6 +192,15 @@ export type GiftOverride = {
   note: string | null
 }
 
+/** Explicit quantity of a rule's gift for one family (e.g. 2 bhaji boxes); replaces the automatic count. */
+export type GiftCount = {
+  id?: string
+  function_id?: string
+  rule_id: string
+  family_id: string
+  quantity: number
+}
+
 export const TARGET_GROUP_LABELS: Record<GiftingRule['target_gender'], string> = {
   All: 'Everyone',
   Adults: 'Adults',
@@ -228,7 +237,7 @@ function recipientsInFamily(rule: GiftingRule, hc: Headcount) {
   }
 }
 
-export type RuleResult = { rule: GiftingRule; count: number; total: number }
+export type RuleResult = { rule: GiftingRule; count: number; total: number; customFamilies: number }
 
 export type GiftingSummary = {
   rules: RuleResult[]
@@ -241,26 +250,38 @@ export type GiftingSummary = {
 /**
  * Planned gifting for a function. A family with a lifafa override gets that
  * fixed amount instead of what the lifafa rules would give them; return-gift
- * rules still apply to them.
+ * rules still apply to them. A per-family gift count (e.g. 2 bhaji boxes)
+ * replaces the rule's automatic count for that family.
  */
 export function computeGifting(
   rules: GiftingRule[],
   overrides: GiftOverride[],
   families: PlanningFamily[],
   rows: PlanningAttendance[],
-  kidAge = DEFAULT_KID_AGE
+  kidAge = DEFAULT_KID_AGE,
+  giftCounts: GiftCount[] = []
 ): GiftingSummary {
   const headcounts = families.map(f => ({ family: f, hc: familyHeadcount(f, rows, kidAge) }))
   const overrideByFamily = new Map(overrides.map(o => [o.family_id, o]))
+  const countKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
+  const explicit = new Map(giftCounts.map(c => [countKey(c.rule_id, c.family_id), Number(c.quantity) || 0]))
 
   const ruleResults: RuleResult[] = rules.map(rule => {
     let count = 0
+    let customFamilies = 0
     headcounts.forEach(({ family, hc }) => {
+      if (hc.total === 0) return
       if (rule.type === 'lifafa' && overrideByFamily.has(family.id)) return
+      const set = explicit.get(countKey(rule.id, family.id))
+      if (set !== undefined) {
+        count += set
+        customFamilies++
+        return
+      }
       if (!ruleAppliesToFamily(rule, family)) return
       count += recipientsInFamily(rule, hc)
     })
-    return { rule, count, total: count * Number(rule.amount || 0) }
+    return { rule, count, total: count * Number(rule.amount || 0), customFamilies }
   })
 
   const overrideResults = overrides
@@ -302,17 +323,18 @@ export const PLANNING_FAMILY_SELECT =
  * and saves them (which also updates the "Lifafas & Gifts" budget line).
  */
 export async function recalcFunctionGifting(supabase: SupabaseClient, functionId: string) {
-  const [funcRes, attRes, rulesRes, overridesRes] = await Promise.all([
+  const [funcRes, attRes, rulesRes, overridesRes, countsRes] = await Promise.all([
     supabase.from('functions').select('id, kid_age_threshold').eq('id', functionId).single(),
     supabase
       .from('function_attendance')
       .select(`family_id, member_id, adults_count, kids_count, families (${PLANNING_FAMILY_SELECT})`)
       .eq('function_id', functionId),
     supabase.from('function_gifting_rules').select('*').eq('function_id', functionId),
-    supabase.from('function_gift_overrides').select('*').eq('function_id', functionId)
+    supabase.from('function_gift_overrides').select('*').eq('function_id', functionId),
+    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', functionId)
   ])
 
-  const error = funcRes.error || attRes.error || rulesRes.error || overridesRes.error
+  const error = funcRes.error || attRes.error || rulesRes.error || overridesRes.error || countsRes.error
   if (error) return { error, categoryId: null as string | null }
 
   const rows = (attRes.data || []) as unknown as Array<PlanningAttendance & { families: PlanningFamily }>
@@ -321,7 +343,8 @@ export async function recalcFunctionGifting(supabase: SupabaseClient, functionId
     (overridesRes.data || []) as GiftOverride[],
     familiesFromAttendance(rows),
     rows,
-    funcRes.data?.kid_age_threshold || DEFAULT_KID_AGE
+    funcRes.data?.kid_age_threshold || DEFAULT_KID_AGE,
+    (countsRes.data || []) as GiftCount[]
   )
   return saveGiftingPlan(supabase, functionId, summary.lifafaTotal, summary.returnGiftTotal)
 }

@@ -13,6 +13,7 @@ import {
   saveGiftingPlan,
   TARGET_GROUP_LABELS,
   TIER_LABELS,
+  type GiftCount,
   type GiftingRule,
   type GiftOverride,
   type PlanningAttendance,
@@ -37,6 +38,7 @@ export default function FunctionGiftingRules({
   canEdit,
   initialRules,
   initialOverrides,
+  giftCounts = [],
   families,
   attendance,
   storedLifafaTotal,
@@ -49,6 +51,7 @@ export default function FunctionGiftingRules({
   canEdit: boolean
   initialRules: GiftingRule[]
   initialOverrides: GiftOverride[]
+  giftCounts?: GiftCount[]
   families: PlanningFamily[]
   attendance: PlanningAttendance[]
   storedLifafaTotal: number
@@ -68,8 +71,8 @@ export default function FunctionGiftingRules({
   const [syncState, setSyncState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   const summary = useMemo(
-    () => computeGifting(rules, overrides, families, attendance, kidAge),
-    [rules, overrides, families, attendance, kidAge]
+    () => computeGifting(rules, overrides, families, attendance, kidAge, giftCounts),
+    [rules, overrides, families, attendance, kidAge, giftCounts]
   )
 
   // Keep the stored totals (and the budget's "Lifafas & Gifts" line) in step
@@ -259,7 +262,7 @@ export default function FunctionGiftingRules({
         </div>
       ) : (
         <div className="space-y-3">
-          {summary.rules.map(({ rule, count, total }) => (
+          {summary.rules.map(({ rule, count, total, customFamilies }) => (
             <div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-marigold/30 rounded-xl">
               <div className="min-w-0">
                 <h3 className="font-semibold text-sm text-maroon">{rule.rule_name}</h3>
@@ -272,11 +275,14 @@ export default function FunctionGiftingRules({
                   <span>•</span>
                   <span>{rule.target_gender === 'Kids' ? `Kids (under ${kidAge})` : TARGET_GROUP_LABELS[rule.target_gender]}</span>
                 </div>
+                {customFamilies > 0 && (
+                  <p className="text-[10px] text-mehendi font-data mt-0.5">Set quantity for {customFamilies} {customFamilies === 1 ? 'family' : 'families'}</p>
+                )}
               </div>
               <div className="flex items-center gap-4 ml-auto">
                 <div className="text-right">
                   <div className="text-xs text-maroon/70 font-data">
-                    {count} {rule.distribution === 'per_family' ? (count === 1 ? 'family' : 'families') : (count === 1 ? 'person' : 'people')} × {rupees(rule.amount)}
+                    {count} {customFamilies > 0 ? 'in total' : rule.distribution === 'per_family' ? (count === 1 ? 'family' : 'families') : (count === 1 ? 'person' : 'people')} × {rupees(rule.amount)}
                   </div>
                   <div className="text-sm font-bold text-maroon">{rupees(total)}</div>
                 </div>
