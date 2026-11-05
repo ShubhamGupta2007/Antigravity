@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import DeleteFunctionButton from './DeleteFunctionButton'
 import FunctionGiftingRules from './FunctionGiftingRules'
 import FunctionSchedule from './FunctionSchedule'
+import FunctionRituals, { type Ritual } from './FunctionRituals'
 import {
   DEFAULT_KID_AGE,
   familiesFromAttendance,
@@ -78,12 +79,16 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     console.error('Error fetching function_attendance:', attendanceError)
   }
 
-  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes] = await Promise.all([
+  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes] = await Promise.all([
     supabase.from('function_gifting_rules').select('*').eq('function_id', func.id).order('created_at'),
     supabase.from('function_gift_overrides').select('*').eq('function_id', func.id),
     supabase.from('function_segments').select('*').eq('function_id', func.id),
-    supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1)
+    supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1),
+    supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order')
   ])
+  if (ritualsRes.error) {
+    console.error('Error fetching rituals:', ritualsRes.error)
+  }
   const planningError = overridesRes.error || segmentsRes.error
   if (planningError) {
     console.error('Error fetching function planning data:', planningError)
@@ -201,7 +206,19 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
           <div>
             <h3 className="font-semibold text-rust-red font-display text-sm">Database update needed</h3>
             <p className="text-xs text-rust-red/80 font-data mt-0.5">
-              Run <b>supabase/07_function_planning.sql</b> in the Supabase SQL editor to enable schedules, headcounts and lifafa exceptions.
+              Run <b>supabase/07_function_planning.sql</b> in the Supabase SQL editor (and then <b>08_function_rituals.sql</b>) to enable schedules, headcounts, lifafa exceptions and rituals.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {ritualsRes.error && !planningError && (
+        <div className="bg-rust-red/10 border border-rust-red p-4 rounded-xl mb-6 shadow-sm flex items-start space-x-3">
+          <span className="text-xl">🚨</span>
+          <div>
+            <h3 className="font-semibold text-rust-red font-display text-sm">Database update needed</h3>
+            <p className="text-xs text-rust-red/80 font-data mt-0.5">
+              Run <b>supabase/08_function_rituals.sql</b> in the Supabase SQL editor to enable rituals.
             </p>
           </div>
         </div>
@@ -289,6 +306,14 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
             initialSegments={(segmentsRes.data || []) as FunctionSegment[]}
             canEdit={canEditSchedule}
           />
+
+          {!ritualsRes.error && (
+            <FunctionRituals
+              functionId={func.id}
+              canEdit={canEditSchedule}
+              initialRituals={(ritualsRes.data || []) as Ritual[]}
+            />
+          )}
 
           {/* Invited Guests Section */}
           <section className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-6">

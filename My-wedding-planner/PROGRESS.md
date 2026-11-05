@@ -49,7 +49,8 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 - [x] Lifafa rules: starter presets (₹1100 close circle / ₹500 extended / ₹250 kids), per-function kid age, per-family lifafa exceptions. Planners can edit.
 - [x] Planned gifting saved on the function and mirrored into the linked budget category as an auto "Lifafas & Gifts" sub-budget.
 - [x] Function schedule: timed parts (Baraat, Milni, Pheras...) per function; Timeline view on `/functions` grouped by day with overlap warnings.
-- Requires `supabase/07_function_planning.sql` to be run in the Supabase SQL editor.
+- [x] Rituals per function (Tilak, Milni, Ring Exchange...): items given, by which side/person, to which side/person, qty, est. cost, status (to arrange / arranged / given).
+- Requires `supabase/07_function_planning.sql` and then `supabase/08_function_rituals.sql` to be run in the Supabase SQL editor.
 
 ### ✅ Phase 4 — Tasks & Todo (Partially Complete)
 - [x] Phase 4.1 — Add Task form (`/tasks/add` UI)
