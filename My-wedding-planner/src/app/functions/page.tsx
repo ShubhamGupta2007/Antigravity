@@ -81,6 +81,11 @@ export default async function FunctionsPage() {
           </Link>
           <h1 className="text-2xl font-display font-semibold text-maroon">Functions</h1>
         </div>
+        <Link href="/functions/checklist">
+          <Button variant="outline" size="sm" className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
+            ✅ Ritual Checklist
+          </Button>
+        </Link>
       </header>
 
       {functionsError && (
