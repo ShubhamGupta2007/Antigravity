@@ -5,13 +5,22 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Check, Search, Sparkles, UserCheck } from 'lucide-react'
+import { Search, Sparkles, UserCheck } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  DEFAULT_KID_AGE,
+  functionHeadcount,
+  recalcFunctionGifting,
+  type PlanningAttendance
+} from '@/lib/functionPlanning'
 
 type FamilyMember = {
   id: string
   name: string
   relation_to_head: string | null
   is_kid_for_gifting: boolean
+  age?: number | null
+  gender?: string | null
 }
 
 type Family = {
@@ -36,7 +45,11 @@ type Attendance = {
   family_id: string
   member_id: string | null
   is_attending: boolean
+  adults_count?: number | null
+  kids_count?: number | null
 }
+
+type HeadcountDraft = { adults: string; kids: string }
 
 type ManageInvitesClientProps = {
   func: any
@@ -72,6 +85,28 @@ export default function ManageInvitesClient({
     })
     return map
   })
+
+  // Per-function headcount for family-level invites ('' = use the family's usual counts)
+  const [headcounts, setHeadcounts] = useState<Record<string, HeadcountDraft>>(() => {
+    const map: Record<string, HeadcountDraft> = {}
+    initialAttendance.forEach(a => {
+      if (a.member_id === null) {
+        map[a.family_id] = {
+          adults: a.adults_count === null || a.adults_count === undefined ? '' : String(a.adults_count),
+          kids: a.kids_count === null || a.kids_count === undefined ? '' : String(a.kids_count)
+        }
+      }
+    })
+    return map
+  })
+
+  const kidAge: number = func.kid_age_threshold || DEFAULT_KID_AGE
+
+  const parseCount = (v: string | undefined) => {
+    if (v === undefined || v.trim() === '') return null
+    const n = Math.floor(Number(v))
+    return Number.isFinite(n) && n >= 0 ? n : null
+  }
 
   // State to optimistically manage room requirements before refresh
   const [roomsState, setRoomsState] = useState<Record<string, { needs_room: boolean; rooms_assigned: number; room_numbers: string }>>(() => {
@@ -122,6 +157,14 @@ export default function ManageInvitesClient({
     setHasUnsavedChanges(true)
   }
 
+  const handleHeadcountChange = (familyId: string, field: keyof HeadcountDraft, value: string) => {
+    setHeadcounts(prev => ({
+      ...prev,
+      [familyId]: { adults: prev[familyId]?.adults ?? '', kids: prev[familyId]?.kids ?? '', [field]: value }
+    }))
+    setHasUnsavedChanges(true)
+  }
+
   const handleAutoInviteTier = (tier: 'tier_1' | 'tier_2' | 'tier_3') => {
     const targetFamilies = families.filter(f => f.relation_tier === tier)
     
@@ -162,14 +205,23 @@ export default function ManageInvitesClient({
     try {
       const upserts: any[] = []
       const toDelete: { family_id: string, member_id: string | null }[] = []
+      const headcountUpdates: { family_id: string, adults_count: number | null, kids_count: number | null }[] = []
 
       families.forEach(f => {
         const familyKey = `${f.id}-family`
-        const initiallyAttendingFam = initialAttendance.some(a => a.family_id === f.id && a.member_id === null && a.is_attending)
+        const initialFamRow = initialAttendance.find(a => a.family_id === f.id && a.member_id === null && a.is_attending)
+        const initiallyAttendingFam = !!initialFamRow
+        const adultsCount = parseCount(headcounts[f.id]?.adults)
+        const kidsCount = parseCount(headcounts[f.id]?.kids)
         if (attendanceMap[familyKey] && !initiallyAttendingFam) {
-          upserts.push({ function_id: func.id, family_id: f.id, member_id: null, is_attending: true })
+          upserts.push({ function_id: func.id, family_id: f.id, member_id: null, is_attending: true, adults_count: adultsCount, kids_count: kidsCount })
         } else if (!attendanceMap[familyKey] && initiallyAttendingFam) {
           toDelete.push({ family_id: f.id, member_id: null })
+        } else if (
+          attendanceMap[familyKey] && initialFamRow &&
+          ((initialFamRow.adults_count ?? null) !== adultsCount || (initialFamRow.kids_count ?? null) !== kidsCount)
+        ) {
+          headcountUpdates.push({ family_id: f.id, adults_count: adultsCount, kids_count: kidsCount })
         }
 
         f.family_members.forEach(m => {
@@ -184,7 +236,18 @@ export default function ManageInvitesClient({
       })
 
       if (upserts.length > 0) {
-        await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        if (error) throw error
+      }
+
+      for (const hc of headcountUpdates) {
+        const { error } = await supabase
+          .from('function_attendance')
+          .update({ adults_count: hc.adults_count, kids_count: hc.kids_count })
+          .eq('function_id', func.id)
+          .eq('family_id', hc.family_id)
+          .is('member_id', null)
+        if (error) throw error
       }
 
       for (const del of toDelete) {
@@ -221,6 +284,10 @@ export default function ManageInvitesClient({
         }
       }
 
+      // Guest list changed, so planned lifafas change too
+      const { error: giftingError } = await recalcFunctionGifting(supabase, func.id)
+      if (giftingError) console.error('Could not update planned gifting:', giftingError)
+
       setHasUnsavedChanges(false)
       if (exitAfterSave) {
         router.push(`/functions/${func.id}`)
@@ -229,6 +296,7 @@ export default function ManageInvitesClient({
       }
     } catch (err) {
       console.error(err)
+      toast.error(`Could not save invites: ${(err as { message?: string })?.message || 'unknown error'}`)
     } finally {
       setSaving(false)
     }
@@ -249,72 +317,32 @@ export default function ManageInvitesClient({
     return 'Extended Circle'
   }
 
-  // Calculate stats for currently selected (invited) guests
-  let totalInvited = 0
-  let familiesInvited = 0
-  let adultsInvited = 0
-  let kidsInvited = 0
-  let seniorsInvited = 0
-  let outstationInvited = 0
-  let totalRooms = 0
-
+  // Calculate stats for currently selected (invited) guests, using the same
+  // maths as the function page (named members + expected counts + overrides)
+  const draftRows: PlanningAttendance[] = []
   families.forEach(f => {
-    let localAdults = 0
-    let localKids = 0
-    let localSeniors = 0
-    
-    const isFamilyInvited = attendanceMap[`${f.id}-family`]
-    const invitedMembers = f.family_members.filter(m => attendanceMap[`${f.id}-${m.id}`])
-    
-    if (isFamilyInvited || invitedMembers.length > 0) {
-      familiesInvited++
-      
-      if (isFamilyInvited) {
-        if (f.family_members && f.family_members.length > 0) {
-          f.family_members.forEach((m: any) => {
-            if (m.age !== null) {
-              if (m.age < 12) localKids++
-              else if (m.age >= 60) localSeniors++
-              else localAdults++
-            } else {
-              localAdults++
-            }
-          })
-        }
-        
-        const expectedAdults = f.expected_adults_count || 1
-        const expectedKids = f.expected_kids_count || 0
-        
-        localKids += Math.max(0, expectedKids - localKids)
-        localAdults += Math.max(0, expectedAdults - localAdults - localSeniors)
-      } else {
-        invitedMembers.forEach((m: any) => {
-          if (m.age !== null) {
-            if (m.age < 12) localKids++
-            else if (m.age >= 60) localSeniors++
-            else localAdults++
-          } else {
-            localAdults++
-          }
-        })
-      }
-      
-      adultsInvited += localAdults
-      kidsInvited += localKids
-      seniorsInvited += localSeniors
-      
-      const familyTotal = localAdults + localKids + localSeniors
-      totalInvited += familyTotal
-      
-      if (!f.is_local) {
-        outstationInvited += familyTotal
-      }
-
-      const rState = roomsState[f.id]
-      if (rState?.needs_room) {
-        totalRooms += (rState.rooms_assigned || 0)
-      }
+    if (attendanceMap[`${f.id}-family`]) {
+      draftRows.push({
+        family_id: f.id,
+        member_id: null,
+        adults_count: parseCount(headcounts[f.id]?.adults),
+        kids_count: parseCount(headcounts[f.id]?.kids)
+      })
     }
+    f.family_members.forEach(m => {
+      if (attendanceMap[`${f.id}-${m.id}`]) draftRows.push({ family_id: f.id, member_id: m.id })
+    })
+  })
+  const stats = functionHeadcount(families, draftRows, kidAge)
+  const totalInvited = stats.total
+  const familiesInvited = stats.families
+  const adultsInvited = stats.adults - stats.seniors
+  const kidsInvited = stats.kids
+  const seniorsInvited = stats.seniors
+  const outstationInvited = stats.outstation
+  let totalRooms = 0
+  families.forEach(f => {
+    if (stats.byFamily[f.id] && roomsState[f.id]?.needs_room) totalRooms += roomsState[f.id].rooms_assigned || 0
   })
 
   return (
@@ -522,6 +550,47 @@ export default function ManageInvitesClient({
                     </span>
                   )}
                 </div>
+
+                {/* Per-function headcount (family-level invites) */}
+                {isFamilyChecked && (() => {
+                  const hc = stats.byFamily[family.id]
+                  return (
+                    <div className="bg-mehendi/5 rounded-lg p-3 border border-mehendi/15">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="text-xs font-semibold text-maroon mr-auto">
+                          👥 Coming to {func.name}
+                          <span className="block text-[10px] font-normal text-maroon/50">
+                            Leave blank to use their usual {hc?.autoAdults ?? family.expected_adults_count ?? 1} adults / {hc?.autoKids ?? family.expected_kids_count ?? 0} kids
+                          </span>
+                        </div>
+                        <div className="space-y-1 w-20">
+                          <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${family.id}-adults`}>Adults</label>
+                          <Input
+                            id={`${family.id}-adults`}
+                            type="number"
+                            min={0}
+                            placeholder={String(hc?.autoAdults ?? '')}
+                            value={headcounts[family.id]?.adults ?? ''}
+                            onChange={(e) => handleHeadcountChange(family.id, 'adults', e.target.value)}
+                            className="h-7 text-xs bg-white border-marigold/30"
+                          />
+                        </div>
+                        <div className="space-y-1 w-20">
+                          <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${family.id}-kids`}>Kids</label>
+                          <Input
+                            id={`${family.id}-kids`}
+                            type="number"
+                            min={0}
+                            placeholder={String(hc?.autoKids ?? '')}
+                            value={headcounts[family.id]?.kids ?? ''}
+                            onChange={(e) => handleHeadcountChange(family.id, 'kids', e.target.value)}
+                            className="h-7 text-xs bg-white border-marigold/30"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Room Needs Section */}
                 <div className="bg-marigold/5 rounded-lg p-3 border border-marigold/10 space-y-2">

@@ -518,7 +518,10 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
                                   return (
                                     <div key={item.id} className="space-y-1.5 pl-3 border-l-2 border-marigold/30">
                                       <div className="flex justify-between items-center text-xs font-data">
-                                        <span className="text-maroon/80 font-bold">{item.name}</span>
+                                        <span className="text-maroon/80 font-bold">
+                                          {item.name}
+                                          {item.is_auto && <span className="ml-1.5 text-[9px] font-normal text-mehendi bg-mehendi/10 px-1.5 py-0.5 rounded-full" title="Calculated from this function's gifting rules">auto</span>}
+                                        </span>
                                         <div className="flex items-center space-x-2">
                                           <span className="font-sans font-bold text-maroon">{formatCurrency(item.spent)}</span>
                                           <span className="text-maroon/50 text-[10px]">of {formatLakhs(Number(item.target_budget))}</span>

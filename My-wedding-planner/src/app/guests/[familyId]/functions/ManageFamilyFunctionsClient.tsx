@@ -4,7 +4,17 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
-import { Check, Calendar, Users } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { toast } from 'sonner'
+import { DEFAULT_KID_AGE, familyHeadcount, recalcFunctionGifting } from '@/lib/functionPlanning'
+
+type HeadcountDraft = { adults: string; kids: string }
+
+const parseCount = (v: string | undefined) => {
+  if (v === undefined || v.trim() === '') return null
+  const n = Math.floor(Number(v))
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
 
 type ManageFamilyFunctionsClientProps = {
   family: any
@@ -30,6 +40,28 @@ export default function ManageFamilyFunctionsClient({
     })
     return map
   })
+
+  // Per-function headcount for this family ('' = use the family's usual counts)
+  const [headcounts, setHeadcounts] = useState<Record<string, HeadcountDraft>>(() => {
+    const map: Record<string, HeadcountDraft> = {}
+    initialAttendance.forEach(a => {
+      if (a.member_id === null) {
+        map[a.function_id] = {
+          adults: a.adults_count === null || a.adults_count === undefined ? '' : String(a.adults_count),
+          kids: a.kids_count === null || a.kids_count === undefined ? '' : String(a.kids_count)
+        }
+      }
+    })
+    return map
+  })
+
+  const handleHeadcountChange = (functionId: string, field: keyof HeadcountDraft, value: string) => {
+    setHeadcounts(prev => ({
+      ...prev,
+      [functionId]: { adults: prev[functionId]?.adults ?? '', kids: prev[functionId]?.kids ?? '', [field]: value }
+    }))
+    setHasUnsavedChanges(true)
+  }
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,15 +89,28 @@ export default function ManageFamilyFunctionsClient({
     try {
       const upserts: any[] = []
       const toDelete: { function_id: string, member_id: string | null }[] = []
+      const headcountUpdates: { function_id: string, adults_count: number | null, kids_count: number | null }[] = []
+      const changedFunctionIds = new Set<string>()
 
       functions.forEach(func => {
         const familyKey = `${func.id}-family`
-        const initiallyAttendingFam = initialAttendance.some(a => a.function_id === func.id && a.member_id === null)
-        
+        const initialFamRow = initialAttendance.find(a => a.function_id === func.id && a.member_id === null)
+        const initiallyAttendingFam = !!initialFamRow
+        const adultsCount = parseCount(headcounts[func.id]?.adults)
+        const kidsCount = parseCount(headcounts[func.id]?.kids)
+
         if (attendanceMap[familyKey] && !initiallyAttendingFam) {
-          upserts.push({ function_id: func.id, family_id: family.id, member_id: null, is_attending: true })
+          upserts.push({ function_id: func.id, family_id: family.id, member_id: null, is_attending: true, adults_count: adultsCount, kids_count: kidsCount })
+          changedFunctionIds.add(func.id)
         } else if (!attendanceMap[familyKey] && initiallyAttendingFam) {
           toDelete.push({ function_id: func.id, member_id: null })
+          changedFunctionIds.add(func.id)
+        } else if (
+          attendanceMap[familyKey] && initialFamRow &&
+          ((initialFamRow.adults_count ?? null) !== adultsCount || (initialFamRow.kids_count ?? null) !== kidsCount)
+        ) {
+          headcountUpdates.push({ function_id: func.id, adults_count: adultsCount, kids_count: kidsCount })
+          changedFunctionIds.add(func.id)
         }
 
         family.family_members.forEach((m: any) => {
@@ -74,14 +119,27 @@ export default function ManageFamilyFunctionsClient({
           
           if (attendanceMap[memberKey] && !initiallyAttendingMem) {
             upserts.push({ function_id: func.id, family_id: family.id, member_id: m.id, is_attending: true })
+            changedFunctionIds.add(func.id)
           } else if (!attendanceMap[memberKey] && initiallyAttendingMem) {
             toDelete.push({ function_id: func.id, member_id: m.id })
+            changedFunctionIds.add(func.id)
           }
         })
       })
 
       if (upserts.length > 0) {
-        await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        if (error) throw error
+      }
+
+      for (const hc of headcountUpdates) {
+        const { error } = await supabase
+          .from('function_attendance')
+          .update({ adults_count: hc.adults_count, kids_count: hc.kids_count })
+          .eq('function_id', hc.function_id)
+          .eq('family_id', family.id)
+          .is('member_id', null)
+        if (error) throw error
       }
 
       for (const del of toDelete) {
@@ -98,11 +156,18 @@ export default function ManageFamilyFunctionsClient({
         await q
       }
 
+      // Planned lifafas depend on who is coming, so refresh them for changed functions
+      for (const functionId of changedFunctionIds) {
+        const { error } = await recalcFunctionGifting(supabase, functionId)
+        if (error) console.error('Could not update planned gifting:', error)
+      }
+
       setHasUnsavedChanges(false)
       router.push('/guests')
       router.refresh()
     } catch (err) {
       console.error(err)
+      toast.error(`Could not save invites: ${(err as { message?: string })?.message || 'unknown error'}`)
     } finally {
       setSaving(false)
     }
@@ -147,6 +212,27 @@ export default function ManageFamilyFunctionsClient({
                   </div>
                 </div>
               </div>
+
+              {/* Headcount for this function */}
+              {isFunctionChecked && (() => {
+                const auto = familyHeadcount(family, [{ family_id: family.id, member_id: null }], func.kid_age_threshold || DEFAULT_KID_AGE)
+                return (
+                  <div className="flex flex-wrap items-end gap-3 pl-7">
+                    <div className="text-[11px] font-data text-maroon/60 mr-auto">
+                      How many are coming?
+                      <span className="block text-[10px] text-maroon/40">Blank = usual {auto.autoAdults} adults / {auto.autoKids} kids</span>
+                    </div>
+                    <div className="space-y-1 w-20">
+                      <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${func.id}-adults`}>Adults</label>
+                      <Input id={`${func.id}-adults`} type="number" min={0} placeholder={String(auto.autoAdults)} value={headcounts[func.id]?.adults ?? ''} onChange={(e) => handleHeadcountChange(func.id, 'adults', e.target.value)} className="h-7 text-xs bg-white border-marigold/30" />
+                    </div>
+                    <div className="space-y-1 w-20">
+                      <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${func.id}-kids`}>Kids</label>
+                      <Input id={`${func.id}-kids`} type="number" min={0} placeholder={String(auto.autoKids)} value={headcounts[func.id]?.kids ?? ''} onChange={(e) => handleHeadcountChange(func.id, 'kids', e.target.value)} className="h-7 text-xs bg-white border-marigold/30" />
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Family Members Checklist */}
               {family.family_members.length === 0 ? (

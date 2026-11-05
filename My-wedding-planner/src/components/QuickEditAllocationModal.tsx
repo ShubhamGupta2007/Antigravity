@@ -14,6 +14,7 @@ interface SubItem {
   category_id: string
   name: string
   target_budget: number
+  is_auto?: boolean | null
 }
 
 interface QuickEditAllocationModalProps {
@@ -38,7 +39,10 @@ export function QuickEditAllocationModal({
   const [isOpen, setIsOpen] = useState(false)
   const [limit, setLimit] = useState<number>(currentLimit)
   const [description, setDescription] = useState(currentDescription || '')
-  const [items, setItems] = useState<SubItem[]>(subItems || [])
+  // Auto-managed lines (e.g. "Lifafas & Gifts") are shown read-only and never edited here
+  const autoItems = (subItems || []).filter(s => s.is_auto)
+  const editableSubItems = (subItems || []).filter(s => !s.is_auto)
+  const [items, setItems] = useState<SubItem[]>(editableSubItems)
   const [saving, setSaving] = useState(false)
   
   const router = useRouter()
@@ -50,7 +54,7 @@ export function QuickEditAllocationModal({
   const handleOpen = () => {
     setLimit(currentLimit)
     setDescription(currentDescription || '')
-    setItems(subItems || [])
+    setItems(editableSubItems)
     setIsOpen(true)
   }
 
@@ -111,6 +115,7 @@ export function QuickEditAllocationModal({
         .from('category_sub_items')
         .select('id')
         .eq('category_id', categoryId)
+        .eq('is_auto', false)
 
       const existingIds = (existingSubItems || []).map(s => s.id)
       const currentIds = items.filter(s => !!s.id).map(s => s.id)
@@ -247,7 +252,14 @@ export function QuickEditAllocationModal({
                   </button>
                 </div>
 
-                {items.length === 0 ? (
+                {autoItems.map(sub => (
+                  <div key={sub.id} className="flex items-center justify-between gap-2 bg-mehendi/5 p-2.5 rounded-xl border border-mehendi/20 text-xs" title="Calculated from this function's gifting rules. Change it from the function's page.">
+                    <span className="font-semibold text-maroon">🎁 {sub.name} <span className="text-[10px] font-normal text-maroon/50">auto from gifting rules</span></span>
+                    <span className="font-data font-bold text-maroon">{formatLakhs(Number(sub.target_budget) || 0)}</span>
+                  </div>
+                ))}
+
+                {items.length === 0 && autoItems.length === 0 ? (
                   <p className="text-[11px] text-maroon/50 italic bg-ivory/50 p-2.5 rounded-xl border border-dashed border-marigold/30 text-center">
                     No itemized sub-budgets added yet.
                   </p>

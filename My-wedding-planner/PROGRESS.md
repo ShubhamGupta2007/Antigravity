@@ -1,7 +1,7 @@
 # Progress Log & Handover Document
 
 **Project Status:** Mid-Development
-**Last Updated:** 2026-07-18
+**Last Updated:** 2026-11-05
 
 ## Architecture & State Summary
 We are building a Next.js (App Router) + Supabase application for wedding planning.
@@ -43,6 +43,14 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 - [x] Phase 3.5 — Activate Function linking on Expense form: Dropdown added, auto-derives splits (50/50 for joint).
 - [x] Phase 3.6 — Function-level access control: Filtering by side and joint scope.
 
+### ✅ Phase 3b — Function Planning (2026-11-05)
+- [x] Per-function headcounts: adults/kids per family per function (Manage Invites + family's Manage Functions page). Blank = family's usual counts.
+- [x] Shared headcount/gifting maths in `src/lib/functionPlanning.ts` used by every functions screen.
+- [x] Lifafa rules: starter presets (₹1100 close circle / ₹500 extended / ₹250 kids), per-function kid age, per-family lifafa exceptions. Planners can edit.
+- [x] Planned gifting saved on the function and mirrored into the linked budget category as an auto "Lifafas & Gifts" sub-budget.
+- [x] Function schedule: timed parts (Baraat, Milni, Pheras...) per function; Timeline view on `/functions` grouped by day with overlap warnings.
+- Requires `supabase/07_function_planning.sql` to be run in the Supabase SQL editor.
+
 ### ✅ Phase 4 — Tasks & Todo (Partially Complete)
 - [x] Phase 4.1 — Add Task form (`/tasks/add` UI)
 - [x] Phase 4.2 — Tasks Dashboard (`/tasks` split Ladkewale/Ladkiwale list with toggleable checkboxes)
@@ -79,3 +87,5 @@ If you are picking up this project, here is exactly what needs to happen next:
 - (2026-07-19) Implemented Family-level Room tracking logic inside `ManageInvitesClient.tsx` with dedicated database columns and real-time floating save banners.
 - (2026-07-19) Resolved `function_gifting_rules` check constraints to properly handle gender/age target groupings in the database layer.
 - (2026-07-19) Refined Auto-Invite helpers with interactive `window.confirm` dialogues and toggle functionality.
+- (2026-11-05) "Adults" in gifting rules now includes seniors (Adults and Kids are complementary); "Seniors" is a 60+ subset for extra rules.
+- (2026-11-05) Auto-managed sub-budgets (`category_sub_items.is_auto`) are read-only in Budget Setup and Edit Allocation and are skipped by Setup's clear-and-reinsert save.

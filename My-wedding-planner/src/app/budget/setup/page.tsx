@@ -36,6 +36,8 @@ export default function BudgetSetupPage() {
   const [descriptions, setDescriptions] = useState<Record<string, string>>({})
   const [functionsList, setFunctionsList] = useState<any[]>([])
   const [subItems, setSubItems] = useState<Record<string, SubItem[]>>({})
+  // Auto-managed lines (e.g. "Lifafas & Gifts" from a function's gifting rules): shown read-only, never re-saved here
+  const [autoSubItems, setAutoSubItems] = useState<Record<string, SubItem[]>>({})
   const [tempSubItems, setTempSubItems] = useState<SubItem[]>([])
   
   const [userSide, setUserSide] = useState<string | null>(null)
@@ -117,11 +119,13 @@ export default function BudgetSetupPage() {
       // Fetch existing sub-items
       const { data: subData } = await supabase.from('category_sub_items').select('*').order('name')
       const groupedSubItems: Record<string, SubItem[]> = {}
+      const groupedAutoItems: Record<string, SubItem[]> = {}
       subData?.forEach(s => {
-        if (!groupedSubItems[s.category_id]) {
-          groupedSubItems[s.category_id] = []
+        const target = s.is_auto ? groupedAutoItems : groupedSubItems
+        if (!target[s.category_id]) {
+          target[s.category_id] = []
         }
-        groupedSubItems[s.category_id].push({
+        target[s.category_id].push({
           id: s.id,
           category_id: s.category_id,
           name: s.name,
@@ -129,6 +133,7 @@ export default function BudgetSetupPage() {
         })
       })
       setSubItems(groupedSubItems)
+      setAutoSubItems(groupedAutoItems)
 
       // Fetch existing budgets for this side
       if (dbUser?.side) {
@@ -387,6 +392,7 @@ export default function BudgetSetupPage() {
         .from('category_sub_items')
         .delete()
         .in('category_id', categories.map(c => c.id))
+        .eq('is_auto', false)
       
       if (subClearErr) {
         setError(`Failed to clear old sub-items: ${subClearErr.message}`)
@@ -746,7 +752,8 @@ export default function BudgetSetupPage() {
 
       {/* Description & Sub-Items Popup Modal */}
       {editingDescriptionId && (() => {
-        const subItemsTotal = tempSubItems.reduce((acc, s) => acc + (s.target_budget || 0), 0)
+        const modalAutoItems = autoSubItems[editingDescriptionId] || []
+        const subItemsTotal = [...modalAutoItems, ...tempSubItems].reduce((acc, s) => acc + (s.target_budget || 0), 0)
         const parentLimit = budgets[editingDescriptionId] || 0
         const isSubOver = subItemsTotal > parentLimit
 
@@ -821,6 +828,13 @@ export default function BudgetSetupPage() {
                     ⚠️ Itemized total ({formatLakhs(subItemsTotal)}) exceeds parent limit ({formatLakhs(parentLimit)}) by {formatLakhs(subItemsTotal - parentLimit)}!
                   </div>
                 )}
+
+                {modalAutoItems.map(item => (
+                  <div key={item.id} className="flex justify-between items-center text-xs bg-mehendi/5 border border-mehendi/20 rounded-md px-2.5 py-1.5" title="Calculated from this function's gifting rules. Change it from the function's page.">
+                    <span className="text-maroon font-semibold">🎁 {item.name} <span className="text-[9px] font-normal text-maroon/50">auto from gifting rules</span></span>
+                    <span className="font-data font-bold text-maroon">{formatLakhs(item.target_budget)}</span>
+                  </div>
+                ))}
 
                 <div className="space-y-2">
                   {tempSubItems.map((item, idx) => (

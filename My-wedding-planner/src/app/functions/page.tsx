@@ -2,19 +2,17 @@ import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, Calendar, MapPin, Users } from 'lucide-react'
-import { format } from 'date-fns'
-
-type FunctionItem = {
-  id: string
-  name: string
-  event_date: string
-  start_time: string | null
-  end_time: string | null
-  location: string | null
-  hosting_side: 'groom' | 'bride' | 'joint'
-  max_budget: number
-}
+import { ArrowLeft, Plus, Calendar } from 'lucide-react'
+import FunctionsView, { type FunctionCard } from './FunctionsView'
+import {
+  DEFAULT_KID_AGE,
+  PLANNING_FAMILY_SELECT,
+  familiesFromAttendance,
+  functionHeadcount,
+  type FunctionSegment,
+  type PlanningAttendance,
+  type PlanningFamily
+} from '@/lib/functionPlanning'
 
 export default async function FunctionsPage() {
   const supabase = await createClient()
@@ -28,27 +26,45 @@ export default async function FunctionsPage() {
   const role = dbUser?.role || 'regular'
   const side = dbUser?.side
 
-  // Fetch functions with attendance lists
-  const { data: functions } = await supabase
+  // Fetch functions with attendance (for headcounts) and their timed parts
+  const { data: functions, error: functionsError } = await supabase
     .from('functions')
     .select(`
       *,
-      function_attendance (id, member_id)
+      function_attendance (family_id, member_id, adults_count, kids_count, families (${PLANNING_FAMILY_SELECT})),
+      function_segments (*)
     `)
     .order('event_date')
+    .order('start_time', { ascending: true, nullsFirst: false })
+
+  if (functionsError) {
+    console.error('Error fetching functions:', functionsError)
+  }
 
   // Filter based on role and side
-  const visibleFunctions = (functions || [])
-    .map(f => {
-      const attendingMembers = (f.function_attendance || []).filter((a: any) => a.member_id !== null)
-      return {
-        ...f,
-        attendingCount: attendingMembers.length
-      }
-    })
+  const visibleFunctions: FunctionCard[] = (functions || [])
     .filter(f => {
       if (role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom') return true
       return f.hosting_side === side || f.hosting_side === 'joint'
+    })
+    .map(f => {
+      const rows = (f.function_attendance || []) as Array<PlanningAttendance & { families: PlanningFamily }>
+      const hc = functionHeadcount(familiesFromAttendance(rows), rows, f.kid_age_threshold || DEFAULT_KID_AGE)
+      return {
+        id: f.id,
+        name: f.name,
+        event_date: f.event_date,
+        start_time: f.start_time,
+        end_time: f.end_time,
+        location: f.location,
+        hosting_side: f.hosting_side,
+        adults: hc.adults,
+        kids: hc.kids,
+        total: hc.total,
+        families: hc.families,
+        plannedGifting: Math.round((Number(f.planned_lifafa_total) || 0) + (Number(f.planned_return_gift_total) || 0)),
+        segments: (f.function_segments || []) as FunctionSegment[]
+      }
     })
 
   const canAdd = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom' || side
@@ -66,6 +82,12 @@ export default async function FunctionsPage() {
         </div>
       </header>
 
+      {functionsError && (
+        <div className="bg-rust-red/10 border border-rust-red p-4 rounded-xl mb-6 text-xs text-rust-red font-data">
+          Couldn&apos;t load functions. If you just updated the app, run <b>supabase/07_function_planning.sql</b> in the Supabase SQL editor.
+        </div>
+      )}
+
       {visibleFunctions.length === 0 ? (
         <div className="text-center p-8 bg-white rounded-2xl border border-marigold/30 mt-4">
           <Calendar className="w-12 h-12 text-marigold/40 mx-auto mb-4" />
@@ -77,46 +99,7 @@ export default async function FunctionsPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visibleFunctions.map(f => (
-            <Link key={f.id} href={`/functions/${f.id}`} className="group">
-              <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 hover:border-marigold transition-colors h-full flex flex-col">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-xl font-display font-semibold text-maroon group-hover:text-marigold transition-colors">{f.name}</h3>
-                  <span className={`text-xs px-2 py-1 rounded-full font-data ${
-                    f.hosting_side === 'groom' ? 'bg-marigold/20 text-maroon' : 
-                    f.hosting_side === 'bride' ? 'bg-rani-pink/10 text-rani-pink' : 
-                    'bg-mehendi/10 text-mehendi'
-                  }`}>
-                    {f.hosting_side === 'groom' ? '🤵‍♂️ Groom' : 
-                     f.hosting_side === 'bride' ? '👰‍♀️ Bride' : 
-                     '🤝 Joint'}
-                  </span>
-                </div>
-
-                <div className="space-y-2 mt-auto">
-                  <div className="flex items-center text-sm font-data text-maroon/70">
-                    <Calendar className="w-4 h-4 mr-2 text-marigold" />
-                    <span>{format(new Date(f.event_date), 'MMM do, yyyy')}</span>
-                    {f.start_time && <span className="ml-2 border-l border-maroon/20 pl-2">{f.start_time.slice(0, 5)}</span>}
-                  </div>
-                  
-                  {f.location && (
-                    <div className="flex items-center text-sm font-data text-maroon/70">
-                      <MapPin className="w-4 h-4 mr-2 text-marigold" />
-                      <span className="truncate">{f.location}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center text-sm font-data text-maroon/70 pt-2 border-t border-marigold/10 mt-3">
-                    <Users className="w-4 h-4 mr-2 text-marigold" />
-                    <span>{f.attendingCount} Attending</span>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <FunctionsView functions={visibleFunctions} />
       )}
 
       {/* Floating Action Button */}

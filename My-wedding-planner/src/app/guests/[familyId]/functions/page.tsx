@@ -38,7 +38,7 @@ export default async function ManageFamilyFunctionsPage({ params }: { params: Pr
   // Fetch current function attendance for this family
   const { data: attendance } = await supabase
     .from('function_attendance')
-    .select('id, function_id, member_id')
+    .select('id, function_id, member_id, adults_count, kids_count')
     .eq('family_id', family.id)
 
   return (
