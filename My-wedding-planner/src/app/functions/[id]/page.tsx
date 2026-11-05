@@ -49,7 +49,19 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     .eq('function_id', func.id)
 
   const totalSpent = (expenses || []).reduce((acc, curr) => acc + Number(curr.amount), 0)
-  const maxBudget = Number(func.max_budget)
+  // A function's budget comes from its linked category in Budget Setup (both
+  // sides' limits added up). The function's own max_budget is only a fallback
+  // when no category limit is set, so the two can't disagree on screen.
+  const { data: budgetCats } = await supabase
+    .from('categories')
+    .select('id, name, category_budgets (max_budget)')
+    .eq('function_id', func.id)
+  const categoryLimit = (budgetCats || []).reduce(
+    (sum, c) => sum + ((c.category_budgets as { max_budget: number }[] | null) || []).reduce((s, b) => s + (Number(b.max_budget) || 0), 0),
+    0
+  )
+  const budgetFromCategory = categoryLimit > 0
+  const maxBudget = budgetFromCategory ? categoryLimit : Number(func.max_budget) || 0
   const budgetPercentage = maxBudget > 0 ? (totalSpent / maxBudget) * 100 : 0
   const overbudget = totalSpent > maxBudget
 
@@ -199,7 +211,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
           <div>
             <h3 className="font-semibold text-rust-red font-display text-sm">Database Error Detected</h3>
             <p className="text-xs text-rust-red/80 font-data mt-0.5">
-              We couldn't fetch the guest list. Have you run the <b>06_gifting_rules.sql</b> migration script in your Supabase SQL editor? The app requires the new `gender` column to load attendance!
+              We couldn&apos;t load the guest list for this function. Run the database scripts listed in <b>supabase/README.md</b> (in order) in the Supabase SQL editor.
             </p>
           </div>
         </div>
@@ -515,7 +527,12 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                 <span className="font-semibold">₹{totalSpent.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-xs font-data text-maroon/50 mb-2">
-                <span>Total Budget</span>
+                <span>
+                  Total Budget
+                  <span className="block text-[10px] text-maroon/40">
+                    {budgetFromCategory ? `From Budget Setup (${(budgetCats || []).map(c => c.name).join(', ')})` : 'Set when the function was added'}
+                  </span>
+                </span>
                 <span>₹{maxBudget.toLocaleString('en-IN')}</span>
               </div>
               {plannedGifting > 0 && (
