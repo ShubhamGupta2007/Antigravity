@@ -1,6 +1,6 @@
 ---
 name: notebook-photo-import
-description: Update the wedding planner from photos of the family's handwritten notebook. Use whenever the user shares one or more photos (or pasted text) of lists — guest lists, families and members, who is coming to which function and how many, lifafa / shagun amounts, bhaji boxes or other gift items with prices — with or without saying what they are. Works out what each page is and which data it changes, transcribes and cross-checks totals, matches existing families so nothing is duplicated, shows a dry run, and writes only after the user confirms.
+description: Update the wedding planner from photos of the family's handwritten notebook. Use whenever the user shares one or more photos (or pasted text) of lists — guest lists, families and members, who is coming to which function and how many, RSVPs, lifafa amounts given, shagun received, bhaji boxes or other gift items with prices — with or without saying what they are. Works out what each page is and which data it changes, transcribes and cross-checks totals, matches existing families so nothing is duplicated, shows a dry run, and writes only after the user confirms.
 ---
 
 # Notebook photo import
@@ -45,10 +45,15 @@ the title, date and columns. Kinds of page:
 | A function name/date with names and member counts | invites + headcount per family at that function (and families/members) | yes |
 | Amounts per family (₹ column, "lifafa", "shagun") | lifafa amount per family at the function | yes |
 | Boxes / items per family ("bhaji box", "mithai", "kambal") and/or an item price | a priced gift item on the function + quantity per family | yes |
+| Who said yes / no ("aa rahe hain", ticks, "nahi aayenge") | RSVP per family: confirmed / declined | yes |
+| What guests gave **you** ("shagun aaya", "received", a list written after the function) | shagun received per family (amount and/or gift) | yes, and `11_shagun_received.sql` |
 | One page with several of these columns | all of the above in one plan | yes |
 
 Pages that continue the same list (numbering carries on, totals at the end) are one list. Different
 functions are separate plans, applied one at a time.
+
+Lifafas the family **gives** (`lifafa_amount`) and shagun the family **receives**
+(`shagun_received`) are different things; if a page doesn't make it clear which, ask.
 
 If a page is something this tool cannot store (expenses, vendor bills, rituals, tasks, menus),
 say so plainly, list what it contains, and leave it out. Do not force it into guest data.
@@ -125,6 +130,10 @@ For each row:
   (same name on this function) keeps its price unless you pass a new one. `gifts` gives each
   family's quantity; a blank box column for a family is `0`, not omitted.
 - `new_family.expected_*` default to the row's headcount; set them only if the page says otherwise.
+- `rsvp`: `"confirmed"` or `"declined"` when the page says so; omit otherwise (leaves it as is).
+  Declined families stay invited but are not counted in headcounts, lifafas or gifts.
+- `shagun_received`: `{ "amount": 1100, "item": "Silver coin", "note": "..." }` for what that
+  family gave. Recorded once; re-running the same plan skips an identical entry.
 
 ## 5. Dry run, confirm, commit
 

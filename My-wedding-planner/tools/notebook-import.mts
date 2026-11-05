@@ -97,13 +97,15 @@ async function loadFamilies(supabase: SupabaseClient) {
 }
 
 async function loadFunction(supabase: SupabaseClient, functionId: string) {
-  const [fn, attendance, overrides, rules, counts] = await Promise.all([
+  const [fn, attendance, overrides, rules, counts, shagun] = await Promise.all([
     supabase.from('functions').select('id, name, event_date, hosting_side, kid_age_threshold, planned_lifafa_total, planned_return_gift_total').eq('id', functionId).maybeSingle(),
     supabase.from('function_attendance').select('id, family_id, member_id, adults_count, kids_count, rsvp_status').eq('function_id', functionId),
     supabase.from('function_gift_overrides').select('*').eq('function_id', functionId),
     supabase.from('function_gifting_rules').select('*').eq('function_id', functionId),
-    supabase.from('function_gift_counts').select('id, rule_id, family_id, quantity').eq('function_id', functionId)
+    supabase.from('function_gift_counts').select('id, rule_id, family_id, quantity').eq('function_id', functionId),
+    supabase.from('shagun_received').select('id, family_id, amount, item').eq('function_id', functionId)
   ])
+  // shagun_received is optional (11_shagun_received.sql); only plans that use it need it
   const error = fn.error || attendance.error || overrides.error || rules.error || counts.error
   if (error) fail(`${error.message}${['42P01', '42703', 'PGRST205', 'PGRST204'].includes(error.code || '') ? ' (has supabase/07_function_planning.sql been run?)' : ''}`)
   if (!fn.data) fail(`No function with id ${functionId}. Run "functions" to list them.`)
@@ -112,7 +114,9 @@ async function loadFunction(supabase: SupabaseClient, functionId: string) {
     attendance: (attendance.data || []) as Array<PlanningAttendance & { id: string }>,
     overrides: (overrides.data || []) as GiftOverride[],
     rules: (rules.data || []) as GiftingRule[],
-    counts: (counts.data || []) as Array<GiftCount & { id: string }>
+    counts: (counts.data || []) as Array<GiftCount & { id: string }>,
+    shagun: (shagun.data || []) as Array<{ id: string; family_id: string | null; amount: number | null; item: string | null }>,
+    shagunError: shagun.error
   }
 }
 
@@ -235,6 +239,10 @@ type PlanRow = {
   lifafa_amount?: number | null
   /** Quantity per gift item name, e.g. { "Bhaji box": 1 }. 0 = this family gets none. */
   gifts?: Record<string, number>
+  /** RSVP at the function: invited (default), confirmed or declined. Omit to leave as is. */
+  rsvp?: 'invited' | 'confirmed' | 'declined'
+  /** Shagun / gift this family GAVE at the function (recorded once; repeats are skipped). */
+  shagun_received?: { amount?: number | null; item?: string | null; note?: string | null }
   note?: string | null
 }
 type GiftItem = { name: string; type?: 'return_gift' | 'lifafa'; unit_price?: number }
@@ -313,14 +321,21 @@ async function cmdApply() {
       if (!isCount(r.adults) || !isCount(r.kids)) problems.push(`${where}: adults and kids are required whole numbers ≥ 0 for a function import`)
       else if ((r.adults as number) + (r.kids as number) === 0) problems.push(`${where}: headcount is 0`)
       if (r.lifafa_amount != null && !(typeof r.lifafa_amount === 'number' && r.lifafa_amount >= 0)) problems.push(`${where}: lifafa_amount must be a number ≥ 0 or null`)
+      if (r.rsvp !== undefined && !['invited', 'confirmed', 'declined'].includes(r.rsvp)) problems.push(`${where}: rsvp must be invited, confirmed or declined`)
+      if (r.shagun_received) {
+        const sr = r.shagun_received
+        if (sr.amount != null && !(typeof sr.amount === 'number' && sr.amount >= 0)) problems.push(`${where}: shagun_received.amount must be a number ≥ 0`)
+        if (sr.amount == null && !sr.item?.trim()) problems.push(`${where}: shagun_received needs an amount or an item`)
+        if (state!.shagunError) problems.push(`${where}: shagun_received needs supabase/11_shagun_received.sql to be run (${state!.shagunError.message})`)
+      }
       for (const [name, qty] of Object.entries(r.gifts || {})) {
         if (!isCount(qty)) problems.push(`${where}: gift "${name}" quantity must be a whole number ≥ 0`)
         if (!giftItems.has(normalize(name)) && !state!.rules.some(x => normalize(x.rule_name) === normalize(name))) {
           problems.push(`${where}: gift "${name}" is not in gift_items and not a rule on this function`)
         }
       }
-    } else if (r.adults !== undefined || r.kids !== undefined || r.lifafa_amount != null || r.gifts) {
-      problems.push(`${where}: headcount, lifafa and gifts need a function_id in the plan`)
+    } else if (r.adults !== undefined || r.kids !== undefined || r.lifafa_amount != null || r.gifts || r.rsvp || r.shagun_received) {
+      problems.push(`${where}: headcount, lifafa, gifts, rsvp and shagun need a function_id in the plan`)
     }
   })
   if (problems.length) {
@@ -370,6 +385,15 @@ async function cmdApply() {
     if (state) {
       const rows = fam ? state.attendance.filter(a => a.family_id === fam.id) : []
       const famRow = rows.find(a => a.member_id === null)
+      const rsvpNow = famRow?.rsvp_status || 'invited'
+      if (r.rsvp && r.rsvp !== rsvpNow && famRow) acts.push(`RSVP ${rsvpNow} → ${r.rsvp}`)
+      if (r.rsvp && r.rsvp !== 'invited' && !famRow) acts.push(`RSVP ${r.rsvp}`)
+      if (r.shagun_received) {
+        const sr = r.shagun_received
+        const dup = fam && state.shagun.some(x => x.family_id === fam.id && Number(x.amount ?? -1) === Number(sr.amount ?? -1) && (x.item || null) === (sr.item?.trim() || null))
+        if (dup) warn.push('same shagun already recorded; skipped')
+        else acts.push(`RECORD shagun received ${sr.amount != null ? rupees(sr.amount) : ''}${sr.item ? ` ${sr.item}` : ''}`.trim())
+      }
       if (!famRow) {
         acts.push(`INVITE with ${r.adults} adult${r.adults === 1 ? "" : "s"} + ${r.kids} kid${r.kids === 1 ? "" : "s"}`)
         if (rows.length) warn.push(`was partly invited (${rows.length} named members); becomes a whole-family invite`)
@@ -485,9 +509,10 @@ async function cmdApply() {
     if (!state) continue
 
     const famRow = state.attendance.find(a => a.family_id === familyId && a.member_id === null)
+    const rsvpPatch = r.rsvp ? { rsvp_status: r.rsvp } : {}
     const att = famRow
-      ? await supabase.from('function_attendance').update({ adults_count: r.adults, kids_count: r.kids, is_attending: true }).eq('id', famRow.id)
-      : await supabase.from('function_attendance').insert({ function_id: fnId, family_id: familyId, member_id: null, is_attending: true, adults_count: r.adults, kids_count: r.kids })
+      ? await supabase.from('function_attendance').update({ adults_count: r.adults, kids_count: r.kids, is_attending: true, ...rsvpPatch }).eq('id', famRow.id)
+      : await supabase.from('function_attendance').insert({ function_id: fnId, family_id: familyId, member_id: null, is_attending: true, adults_count: r.adults, kids_count: r.kids, ...rsvpPatch })
     if (att.error) stop(`inviting "${r.label}"`, att.error.message)
 
     if (r.lifafa_amount != null) {
@@ -495,6 +520,18 @@ async function cmdApply() {
         .from('function_gift_overrides')
         .upsert({ function_id: fnId, family_id: familyId, lifafa_amount: r.lifafa_amount, note: r.note?.trim() || null }, { onConflict: 'function_id,family_id' })
       if (error) stop(`lifafa for "${r.label}"`, error.message)
+    }
+
+    if (r.shagun_received) {
+      const sr = r.shagun_received
+      const item = sr.item?.trim() || null
+      const dup = state.shagun.some(x => x.family_id === familyId && Number(x.amount ?? -1) === Number(sr.amount ?? -1) && (x.item || null) === item)
+      if (!dup) {
+        const { error } = await supabase.from('shagun_received').insert({
+          function_id: fnId, family_id: familyId, amount: sr.amount ?? null, item, notes: sr.note?.trim() || null, received_by: importer.id
+        })
+        if (error) stop(`shagun for "${r.label}"`, error.message)
+      }
     }
 
     for (const [gname, qty] of Object.entries(r.gifts || {})) {
@@ -531,6 +568,10 @@ async function cmdApply() {
     if (r.lifafa_amount != null) {
       const ov = after.overrides.find(o => o.family_id === id)
       if (!ov || Number(ov.lifafa_amount) !== r.lifafa_amount) mismatches.push(`${r.label}: lifafa not saved`)
+    }
+    if (r.rsvp && (famRow?.rsvp_status || 'invited') !== r.rsvp) mismatches.push(`${r.label}: RSVP not saved`)
+    if (r.shagun_received && !after.shagun.some(x => x.family_id === id && Number(x.amount ?? -1) === Number(r.shagun_received!.amount ?? -1))) {
+      mismatches.push(`${r.label}: shagun not saved`)
     }
     for (const [gname, qty] of Object.entries(r.gifts || {})) {
       const rule = giftItems.get(normalize(gname))!.rule!
