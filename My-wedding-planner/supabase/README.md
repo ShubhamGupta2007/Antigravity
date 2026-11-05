@@ -13,6 +13,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `11_shagun_received.sql` | shagun / gifts received from guests, per function (hosts only) |
 | `12_ritual_budget.sql` | ritual items' estimated cost as an auto "Ritual items" budget line |
 | `13_tasks_links.sql` | tasks linked to functions; every due payment becomes a task (kept in step automatically) |
+| `14_guest_invitations.sql` | personal guest invitations: invite link per family, phone check, guest-facing function details, RSVP from the invitation |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.
