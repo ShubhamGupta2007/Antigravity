@@ -68,6 +68,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
       member_id,
       adults_count,
       kids_count,
+      rsvp_status,
       families (
         id, family_name, expected_adults_count, expected_kids_count, is_local, side, relation_tier, city, needs_room, rooms_assigned, room_numbers,
         family_members (id, name, age, gender, is_kid_for_gifting)
@@ -404,7 +405,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
 
                 <div className="flex justify-between items-center text-xs font-data text-maroon/60">
                   <p>Invited Families: <span className="font-semibold text-maroon">{attendingFamilyIds.length} families</span></p>
-                  <p>Named Members: <span className="font-semibold text-maroon">{attendingMembers.length}</span></p>
+                  <p>Confirmed: <span className="font-semibold text-mehendi">{headcount.confirmedFamilies} families ({headcount.confirmedTotal} guests)</span>{headcount.declinedFamilies > 0 && <span className="text-rust-red"> • {headcount.declinedFamilies} declined</span>}</p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {planningFamilies.map(fam => {
@@ -417,9 +418,13 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                           <span className="text-xs font-data font-semibold text-maroon truncate">
                             {fam.family_name?.toLowerCase().endsWith('family') ? fam.family_name : `${fam.family_name} Family`}
                           </span>
-                          <span className="text-[10px] bg-maroon/10 text-maroon px-1.5 py-0.5 rounded-full font-data whitespace-nowrap" title={hc?.isOverride ? 'Headcount set for this function' : undefined}>
-                            {hc?.adults || 0} adults{hc?.kids ? ` + ${hc.kids} kids` : ''}{hc?.isOverride ? ' ✎' : ''}
-                          </span>
+                          {hc?.rsvp === 'declined' ? (
+                            <span className="text-[10px] bg-rust-red/10 text-rust-red px-1.5 py-0.5 rounded-full font-data whitespace-nowrap">✖ Declined</span>
+                          ) : (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-data whitespace-nowrap ${hc?.rsvp === 'confirmed' ? 'bg-mehendi/15 text-mehendi' : 'bg-maroon/10 text-maroon'}`} title={hc?.isOverride ? 'Headcount set for this function' : undefined}>
+                              {hc?.rsvp === 'confirmed' ? '✅ ' : ''}{hc?.adults || 0} adults{hc?.kids ? ` + ${hc.kids} kids` : ''}{hc?.isOverride ? ' ✎' : ''}
+                            </span>
+                          )}
                         </div>
                         {members.length > 0 && (
                           <p className="text-[10px] font-data text-maroon/60 mt-1 truncate">

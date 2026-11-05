@@ -99,7 +99,7 @@ async function loadFamilies(supabase: SupabaseClient) {
 async function loadFunction(supabase: SupabaseClient, functionId: string) {
   const [fn, attendance, overrides, rules, counts] = await Promise.all([
     supabase.from('functions').select('id, name, event_date, hosting_side, kid_age_threshold, planned_lifafa_total, planned_return_gift_total').eq('id', functionId).maybeSingle(),
-    supabase.from('function_attendance').select('id, family_id, member_id, adults_count, kids_count').eq('function_id', functionId),
+    supabase.from('function_attendance').select('id, family_id, member_id, adults_count, kids_count, rsvp_status').eq('function_id', functionId),
     supabase.from('function_gift_overrides').select('*').eq('function_id', functionId),
     supabase.from('function_gifting_rules').select('*').eq('function_id', functionId),
     supabase.from('function_gift_counts').select('id, rule_id, family_id, quantity').eq('function_id', functionId)

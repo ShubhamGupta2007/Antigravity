@@ -26,11 +26,21 @@ export type PlanningFamily = {
   family_members?: PlanningMember[] | null
 }
 
+export type RsvpStatus = 'invited' | 'confirmed' | 'declined'
+
 export type PlanningAttendance = {
   family_id: string
   member_id: string | null
   adults_count?: number | null
   kids_count?: number | null
+  /** On the whole-family row; 'declined' families are not counted. */
+  rsvp_status?: RsvpStatus | null
+}
+
+export const RSVP_LABELS: Record<RsvpStatus, string> = {
+  invited: 'Invited',
+  confirmed: 'Confirmed',
+  declined: 'Declined'
 }
 
 export type Headcount = {
@@ -45,6 +55,7 @@ export type Headcount = {
   autoKids: number
   isOverride: boolean
   isFamilyInvited: boolean
+  rsvp: RsvpStatus
 }
 
 export type AgeGroup = 'kid' | 'adult' | 'senior'
@@ -59,7 +70,7 @@ export function classifyMember(member: PlanningMember, kidAge = DEFAULT_KID_AGE)
 
 const EMPTY: Headcount = {
   adults: 0, seniors: 0, kids: 0, males: 0, females: 0, total: 0,
-  autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false
+  autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false, rsvp: 'invited'
 }
 
 /**
@@ -77,6 +88,8 @@ export function familyHeadcount(
   if (familyRows.length === 0) return { ...EMPTY }
 
   const familyRow = familyRows.find(r => r.member_id === null)
+  const rsvp: RsvpStatus = familyRow?.rsvp_status || 'invited'
+  if (rsvp === 'declined') return { ...EMPTY, isFamilyInvited: !!familyRow, rsvp }
   const members = family.family_members || []
   const invitedMembers = familyRow
     ? members
@@ -124,13 +137,19 @@ export function familyHeadcount(
     autoAdults,
     autoKids,
     isOverride: hasAdultOverride || hasKidOverride,
-    isFamilyInvited: !!familyRow
+    isFamilyInvited: !!familyRow,
+    rsvp
   }
 }
 
 export type FunctionHeadcount = Headcount & {
+  /** Families counted (invited or confirmed; declined excluded). */
   families: number
   outstation: number
+  /** Guests in families that have confirmed. */
+  confirmedTotal: number
+  confirmedFamilies: number
+  declinedFamilies: number
   byFamily: Record<string, Headcount>
 }
 
@@ -139,11 +158,21 @@ export function functionHeadcount(
   rows: PlanningAttendance[],
   kidAge = DEFAULT_KID_AGE
 ): FunctionHeadcount {
-  const result: FunctionHeadcount = { ...EMPTY, families: 0, outstation: 0, byFamily: {} }
+  const result: FunctionHeadcount = {
+    ...EMPTY, families: 0, outstation: 0, confirmedTotal: 0, confirmedFamilies: 0, declinedFamilies: 0, byFamily: {}
+  }
   families.forEach(f => {
     const hc = familyHeadcount(f, rows, kidAge)
     if (hc.total === 0 && !rows.some(r => r.family_id === f.id)) return
     result.byFamily[f.id] = hc
+    if (hc.rsvp === 'declined') {
+      result.declinedFamilies++
+      return
+    }
+    if (hc.rsvp === 'confirmed') {
+      result.confirmedFamilies++
+      result.confirmedTotal += hc.total
+    }
     result.families++
     result.adults += hc.adults
     result.seniors += hc.seniors
@@ -327,7 +356,7 @@ export async function recalcFunctionGifting(supabase: SupabaseClient, functionId
     supabase.from('functions').select('id, kid_age_threshold').eq('id', functionId).single(),
     supabase
       .from('function_attendance')
-      .select(`family_id, member_id, adults_count, kids_count, families (${PLANNING_FAMILY_SELECT})`)
+      .select(`family_id, member_id, adults_count, kids_count, rsvp_status, families (${PLANNING_FAMILY_SELECT})`)
       .eq('function_id', functionId),
     supabase.from('function_gifting_rules').select('*').eq('function_id', functionId),
     supabase.from('function_gift_overrides').select('*').eq('function_id', functionId),

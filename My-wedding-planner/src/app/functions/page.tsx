@@ -31,7 +31,7 @@ export default async function FunctionsPage() {
     .from('functions')
     .select(`
       *,
-      function_attendance (family_id, member_id, adults_count, kids_count, families (${PLANNING_FAMILY_SELECT})),
+      function_attendance (family_id, member_id, adults_count, kids_count, rsvp_status, families (${PLANNING_FAMILY_SELECT})),
       function_segments (*)
     `)
     .order('event_date')
@@ -62,6 +62,7 @@ export default async function FunctionsPage() {
         kids: hc.kids,
         total: hc.total,
         families: hc.families,
+        confirmed: hc.confirmedTotal,
         plannedGifting: Math.round((Number(f.planned_lifafa_total) || 0) + (Number(f.planned_return_gift_total) || 0)),
         segments: (f.function_segments || []) as FunctionSegment[]
       }

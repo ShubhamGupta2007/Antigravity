@@ -11,7 +11,9 @@ import {
   DEFAULT_KID_AGE,
   functionHeadcount,
   recalcFunctionGifting,
-  type PlanningAttendance
+  RSVP_LABELS,
+  type PlanningAttendance,
+  type RsvpStatus
 } from '@/lib/functionPlanning'
 
 type FamilyMember = {
@@ -47,6 +49,7 @@ type Attendance = {
   is_attending: boolean
   adults_count?: number | null
   kids_count?: number | null
+  rsvp_status?: RsvpStatus | null
 }
 
 type HeadcountDraft = { adults: string; kids: string }
@@ -111,6 +114,17 @@ export default function ManageInvitesClient({
   })
 
   const kidAge: number = func.kid_age_threshold || DEFAULT_KID_AGE
+
+  // RSVP per family (whole-family invites)
+  const [rsvp, setRsvp] = useState<Record<string, RsvpStatus>>(() => {
+    const map: Record<string, RsvpStatus> = {}
+    initialAttendance.forEach(a => { if (a.member_id === null && a.rsvp_status) map[a.family_id] = a.rsvp_status })
+    return map
+  })
+  const handleRsvpChange = (familyId: string, value: RsvpStatus) => {
+    setRsvp(prev => ({ ...prev, [familyId]: value }))
+    setHasUnsavedChanges(true)
+  }
 
   // Gift quantities per family ('' = the rule's default of 1 per family)
   const giftKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
@@ -227,7 +241,7 @@ export default function ManageInvitesClient({
     try {
       const upserts: any[] = []
       const toDelete: { family_id: string, member_id: string | null }[] = []
-      const headcountUpdates: { family_id: string, adults_count: number | null, kids_count: number | null }[] = []
+      const headcountUpdates: { family_id: string, adults_count: number | null, kids_count: number | null, rsvp_status: RsvpStatus }[] = []
 
       families.forEach(f => {
         const familyKey = `${f.id}-family`
@@ -235,15 +249,17 @@ export default function ManageInvitesClient({
         const initiallyAttendingFam = !!initialFamRow
         const adultsCount = parseCount(headcounts[f.id]?.adults)
         const kidsCount = parseCount(headcounts[f.id]?.kids)
+        const rsvpStatus: RsvpStatus = rsvp[f.id] || 'invited'
         if (attendanceMap[familyKey] && !initiallyAttendingFam) {
-          upserts.push({ function_id: func.id, family_id: f.id, member_id: null, is_attending: true, adults_count: adultsCount, kids_count: kidsCount })
+          upserts.push({ function_id: func.id, family_id: f.id, member_id: null, is_attending: true, adults_count: adultsCount, kids_count: kidsCount, rsvp_status: rsvpStatus })
         } else if (!attendanceMap[familyKey] && initiallyAttendingFam) {
           toDelete.push({ family_id: f.id, member_id: null })
         } else if (
           attendanceMap[familyKey] && initialFamRow &&
-          ((initialFamRow.adults_count ?? null) !== adultsCount || (initialFamRow.kids_count ?? null) !== kidsCount)
+          ((initialFamRow.adults_count ?? null) !== adultsCount || (initialFamRow.kids_count ?? null) !== kidsCount ||
+            (initialFamRow.rsvp_status || 'invited') !== rsvpStatus)
         ) {
-          headcountUpdates.push({ family_id: f.id, adults_count: adultsCount, kids_count: kidsCount })
+          headcountUpdates.push({ family_id: f.id, adults_count: adultsCount, kids_count: kidsCount, rsvp_status: rsvpStatus })
         }
 
         f.family_members.forEach(m => {
@@ -265,7 +281,7 @@ export default function ManageInvitesClient({
       for (const hc of headcountUpdates) {
         const { error } = await supabase
           .from('function_attendance')
-          .update({ adults_count: hc.adults_count, kids_count: hc.kids_count })
+          .update({ adults_count: hc.adults_count, kids_count: hc.kids_count, rsvp_status: hc.rsvp_status })
           .eq('function_id', func.id)
           .eq('family_id', hc.family_id)
           .is('member_id', null)
@@ -368,7 +384,8 @@ export default function ManageInvitesClient({
         family_id: f.id,
         member_id: null,
         adults_count: parseCount(headcounts[f.id]?.adults),
-        kids_count: parseCount(headcounts[f.id]?.kids)
+        kids_count: parseCount(headcounts[f.id]?.kids),
+        rsvp_status: rsvp[f.id] || 'invited'
       })
     }
     f.family_members.forEach(m => {
@@ -402,6 +419,10 @@ export default function ManageInvitesClient({
           <div>
             <div className="text-xl font-display font-bold text-maroon leading-none">{familiesInvited}</div>
             <div className="text-[10px] font-data text-maroon/70 font-semibold uppercase tracking-wider mt-1">Families</div>
+          </div>
+          <div>
+            <div className="text-xl font-display font-bold text-mehendi leading-none">{stats.confirmedTotal}</div>
+            <div className="text-[10px] font-data text-maroon/70 font-semibold uppercase tracking-wider mt-1">Confirmed{stats.declinedFamilies > 0 ? ` • ${stats.declinedFamilies} declined` : ''}</div>
           </div>
           <div className="flex gap-4 ml-auto bg-white/50 p-2.5 rounded-lg border border-white/60">
             <div className="text-center">
@@ -596,8 +617,29 @@ export default function ManageInvitesClient({
                 {/* Per-function headcount (family-level invites) */}
                 {isFamilyChecked && (() => {
                   const hc = stats.byFamily[family.id]
+                  const current = rsvp[family.id] || 'invited'
                   return (
-                    <div className="bg-mehendi/5 rounded-lg p-3 border border-mehendi/15">
+                    <div className="bg-mehendi/5 rounded-lg p-3 border border-mehendi/15 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="RSVP">
+                        <span className="text-[10px] uppercase font-bold text-maroon/60 mr-1">RSVP</span>
+                        {(['invited', 'confirmed', 'declined'] as RsvpStatus[]).map(status => (
+                          <button
+                            key={status}
+                            type="button"
+                            role="radio"
+                            aria-checked={current === status}
+                            onClick={() => handleRsvpChange(family.id, status)}
+                            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                              current === status
+                                ? status === 'confirmed' ? 'bg-mehendi text-white border-mehendi' : status === 'declined' ? 'bg-rust-red text-white border-rust-red' : 'bg-maroon text-ivory border-maroon'
+                                : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
+                            }`}
+                          >
+                            {status === 'confirmed' ? '✅ ' : status === 'declined' ? '✖ ' : '✉️ '}{RSVP_LABELS[status]}
+                          </button>
+                        ))}
+                      </div>
+                      {current !== 'declined' && (
                       <div className="flex flex-wrap items-end gap-3">
                         <div className="text-xs font-semibold text-maroon mr-auto">
                           👥 Coming to {func.name}
@@ -630,6 +672,7 @@ export default function ManageInvitesClient({
                           />
                         </div>
                       </div>
+                      )}
                     </div>
                   )
                 })()}

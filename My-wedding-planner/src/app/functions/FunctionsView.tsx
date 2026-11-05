@@ -18,6 +18,7 @@ export type FunctionCard = {
   kids: number
   total: number
   families: number
+  confirmed: number
   plannedGifting: number
   segments: FunctionSegment[]
 }
@@ -196,6 +197,7 @@ function TimelineView({ functions }: { functions: FunctionCard[] }) {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-data text-maroon/70">
                         {f.location && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1 text-marigold" />{f.location}</span>}
                         <span className="flex items-center"><Users className="w-3.5 h-3.5 mr-1 text-marigold" />{f.total} expected{f.total > 0 ? ` (${f.adults} adults${f.kids ? `, ${f.kids} kids` : ''})` : ''}</span>
+                        {f.confirmed > 0 && <span className="text-mehendi font-semibold">✅ {f.confirmed} confirmed</span>}
                         {f.plannedGifting > 0 && <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1 text-marigold" />₹{f.plannedGifting.toLocaleString('en-IN')} lifafas</span>}
                       </div>
 
