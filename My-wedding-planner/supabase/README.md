@@ -11,6 +11,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `09_data_integrity.sql` | removes duplicate invites and prevents new ones; locks down `exec_sql`; only admins change a family's side |
 | `10_rsvp.sql` | RSVP status (invited / confirmed / declined) per family per function |
 | `11_shagun_received.sql` | shagun / gifts received from guests, per function (hosts only) |
+| `12_ritual_budget.sql` | ritual items' estimated cost as an auto "Ritual items" budget line |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.

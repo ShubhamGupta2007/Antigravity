@@ -317,6 +317,8 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               functionId={func.id}
               canEdit={canEditSchedule}
               initialRituals={(ritualsRes.data || []) as Ritual[]}
+              storedRitualTotal={Number(func.planned_ritual_total) || 0}
+              linkedCategory={linkedCategoryRes.data?.[0] || null}
             />
           )}
 
@@ -513,6 +515,12 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                 <div className="flex justify-between text-xs font-data text-maroon/50 mb-2">
                   <span>Planned lifafas & gifts</span>
                   <span>₹{plannedGifting.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {Number(func.planned_ritual_total) > 0 && (
+                <div className="flex justify-between text-xs font-data text-maroon/50 mb-2">
+                  <span>Planned ritual items</span>
+                  <span>₹{Math.round(Number(func.planned_ritual_total)).toLocaleString('en-IN')}</span>
                 </div>
               )}
               

@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Sparkles, Plus, Edit2, Trash2, ArrowRight } from 'lucide-react'
+import { Sparkles, Plus, Edit2, Trash2, ArrowRight, Wallet } from 'lucide-react'
 import { createClient } from '@/lib/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -75,11 +75,15 @@ function Party({ side, who }: { side: ToSide | null; who: string | null }) {
 export default function FunctionRituals({
   functionId,
   canEdit,
-  initialRituals
+  initialRituals,
+  storedRitualTotal = 0,
+  linkedCategory = null
 }: {
   functionId: string
   canEdit: boolean
   initialRituals: Ritual[]
+  storedRitualTotal?: number
+  linkedCategory?: { id: string; name: string } | null
 }) {
   const supabase = useMemo(() => createClient(), [])
   const [rituals, setRituals] = useState<Ritual[]>(() =>
@@ -96,6 +100,29 @@ export default function FunctionRituals({
   const fromBride = allItems.filter(i => i.given_by_side === 'bride').length
   const pending = allItems.filter(i => i.status === 'pending').length
   const estTotal = allItems.reduce((s, i) => s + (Number(i.est_cost) || 0), 0)
+
+  // Keep the budget's auto "Ritual items" line in step with the estimated costs
+  const lastSaved = useRef(Number(storedRitualTotal) || 0)
+  const [syncError, setSyncError] = useState(false)
+  useEffect(() => {
+    if (!canEdit || lastSaved.current === estTotal) return
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const { error: err } = await supabase.rpc('set_function_ritual_plan', { p_function_id: functionId, p_total: estTotal })
+      if (cancelled) return
+      if (err) {
+        console.error(err)
+        setSyncError(true)
+      } else {
+        lastSaved.current = estTotal
+        setSyncError(false)
+      }
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [estTotal, canEdit, supabase, functionId])
 
   const updateItems = (ritualId: string, fn: (items: RitualItem[]) => RitualItem[]) =>
     setRituals(prev => prev.map(r => (r.id === ritualId ? { ...r, ritual_items: fn(r.ritual_items || []) } : r)))
@@ -203,6 +230,15 @@ export default function FunctionRituals({
           {pending > 0 && <span className="px-2 py-1 rounded-full bg-rust-red/10 text-rust-red">⏳ <b>{pending}</b> still to arrange</span>}
           {estTotal > 0 && <span className="px-2 py-1 rounded-full bg-maroon/5 text-maroon">Est. <b>{rupees(estTotal)}</b></span>}
         </div>
+      )}
+      {estTotal > 0 && (
+        <p className="-mt-2 mb-4 text-[11px] font-data text-maroon/60">
+          <Wallet className="inline w-3.5 h-3.5 mr-1 text-mehendi" />
+          {linkedCategory
+            ? <>In budget as <strong className="text-maroon">{linkedCategory.name} → Ritual items</strong></>
+            : 'Not in the budget yet: link a budget category to this function in Budget Setup.'}
+          {syncError && <span className="text-rust-red"> • couldn&apos;t update the budget (has 12_ritual_budget.sql been run?)</span>}
+        </p>
       )}
 
       {sorted.length === 0 && !ritualForm && (
