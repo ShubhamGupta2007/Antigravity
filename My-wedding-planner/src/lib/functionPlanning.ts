@@ -313,7 +313,7 @@ export async function recalcFunctionGifting(supabase: SupabaseClient, functionId
   ])
 
   const error = funcRes.error || attRes.error || rulesRes.error || overridesRes.error
-  if (error) return { error }
+  if (error) return { error, categoryId: null as string | null }
 
   const rows = (attRes.data || []) as unknown as Array<PlanningAttendance & { families: PlanningFamily }>
   const summary = computeGifting(

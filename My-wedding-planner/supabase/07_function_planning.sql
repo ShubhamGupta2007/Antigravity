@@ -159,7 +159,8 @@ declare
   v_item uuid;
   v_total numeric := greatest(coalesce(p_lifafa, 0), 0) + greatest(coalesce(p_return_gift, 0), 0);
 begin
-  if auth.uid() is null then
+  -- Signed-in users, or the server-side secret key (used by the guest photo import skill)
+  if auth.uid() is null and coalesce(auth.role(), '') <> 'service_role' then
     raise exception 'Not authenticated';
   end if;
 
