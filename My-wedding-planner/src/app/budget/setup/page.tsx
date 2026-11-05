@@ -386,38 +386,61 @@ export default function BudgetSetupPage() {
       }
     }
 
-    // 4. Save category sub-items
+    // 4. Save category sub-items. Update in place (keeping each item's id) so
+    //    expenses logged against a sub-item keep their link; only items removed
+    //    here are deleted. Auto-managed lines (e.g. "Lifafas & Gifts") are untouched.
     if (categories.length > 0) {
-      const { error: subClearErr } = await supabase
+      const { data: existingSubs, error: subLoadErr } = await supabase
         .from('category_sub_items')
-        .delete()
+        .select('id')
         .in('category_id', categories.map(c => c.id))
         .eq('is_auto', false)
-      
-      if (subClearErr) {
-        setError(`Failed to clear old sub-items: ${subClearErr.message}`)
+
+      if (subLoadErr) {
+        setError(`Failed to load sub-items: ${subLoadErr.message}`)
         setSaving(false)
         return
       }
-    }
 
-    const subItemsToInsert = Object.entries(subItems).flatMap(([categoryId, list]) => 
-      list.map(item => ({
-        category_id: categoryId,
-        name: item.name.trim(),
-        target_budget: item.target_budget
-      }))
-    )
+      const allItems = Object.entries(subItems).flatMap(([categoryId, list]) =>
+        list
+          .filter(item => item.name.trim())
+          .map(item => ({ ...item, category_id: categoryId, name: item.name.trim() }))
+      )
+      const keptIds = new Set(allItems.filter(item => item.id).map(item => item.id as string))
+      const toDelete = (existingSubs || []).map(s => s.id as string).filter(id => !keptIds.has(id))
 
-    if (subItemsToInsert.length > 0) {
-      const { error: subInsertErr } = await supabase
-        .from('category_sub_items')
-        .insert(subItemsToInsert)
-      
-      if (subInsertErr) {
-        setError(`Failed to save sub-items: ${subInsertErr.message}`)
-        setSaving(false)
-        return
+      if (toDelete.length > 0) {
+        const { error } = await supabase.from('category_sub_items').delete().in('id', toDelete)
+        if (error) {
+          setError(`Failed to remove sub-items: ${error.message}`)
+          setSaving(false)
+          return
+        }
+      }
+
+      for (const item of allItems.filter(item => item.id)) {
+        const { error } = await supabase
+          .from('category_sub_items')
+          .update({ name: item.name, target_budget: item.target_budget, category_id: item.category_id })
+          .eq('id', item.id as string)
+        if (error) {
+          setError(`Failed to save sub-item "${item.name}": ${error.message}`)
+          setSaving(false)
+          return
+        }
+      }
+
+      const toInsert = allItems
+        .filter(item => !item.id)
+        .map(item => ({ category_id: item.category_id, name: item.name, target_budget: item.target_budget }))
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('category_sub_items').insert(toInsert)
+        if (error) {
+          setError(`Failed to save sub-items: ${error.message}`)
+          setSaving(false)
+          return
+        }
       }
     }
 
