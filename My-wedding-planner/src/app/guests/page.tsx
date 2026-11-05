@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/server'
+import type { FamilyShagun } from '@/components/ShagunHistory'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -80,6 +81,17 @@ export default async function GuestsPage() {
   if (error) {
     console.error('Error fetching families:', error)
   }
+
+  // Shagun each family gave at functions (only functions this user can see;
+  // empty until 11_shagun_received.sql has been run)
+  const { data: shagunRows } = await supabase
+    .from('shagun_received')
+    .select('function_id, family_id, amount, item, functions (name, event_date)')
+    .not('family_id', 'is', null)
+  const shagunByFamily: Record<string, FamilyShagun[]> = {}
+  ;((shagunRows || []) as unknown as FamilyShagun[]).forEach(r => {
+    if (r.family_id) (shagunByFamily[r.family_id] ||= []).push(r)
+  })
 
   // Group by side
   const ladkewale = (families || []).filter(f => f.side === 'groom')
@@ -230,6 +242,7 @@ export default async function GuestsPage() {
         initialFamilies={families as Family[] || []}
         role={role}
         userSide={userSide}
+        shagunByFamily={shagunByFamily}
       />
     </main>
   )

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus, Search, ChevronDown, ChevronUp, Plus, CalendarDays, Settings, Edit2 } from 'lucide-react'
 import KidToggle from './KidToggle'
+import ShagunHistory, { ShagunBadge, type FamilyShagun } from './ShagunHistory'
 
 type FamilyMember = {
   id: string
@@ -78,11 +79,13 @@ function ActionMenu({ family }: { family: Family }) {
 export default function GuestListManager({
   initialFamilies,
   role,
-  userSide
+  userSide,
+  shagunByFamily = {}
 }: {
   initialFamilies: Family[]
   role: string
   userSide?: string
+  shagunByFamily?: Record<string, FamilyShagun[]>
 }) {
   const [selectedTier, setSelectedTier] = useState<string>(() => {
     if (typeof window !== 'undefined') return sessionStorage.getItem('guestList_selectedTier') || 'all'
@@ -377,6 +380,7 @@ export default function GuestListManager({
             canEdit={canEditActive}
             expandedFamilies={expandedFamilies}
             onToggleExpand={toggleExpand}
+            shagunByFamily={shagunByFamily}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -387,6 +391,7 @@ export default function GuestListManager({
                 canEdit={canEditActive}
                 isExpanded={!!expandedFamilies[family.id]}
                 onToggleExpand={() => toggleExpand(family.id)}
+                shagun={shagunByFamily[family.id] || []}
               />
             ))}
           </div>
@@ -410,12 +415,14 @@ function GuestTable({
   families,
   canEdit,
   expandedFamilies,
-  onToggleExpand
+  onToggleExpand,
+  shagunByFamily
 }: {
   families: Family[]
   canEdit: boolean
   expandedFamilies: Record<string, boolean>
   onToggleExpand: (id: string) => void
+  shagunByFamily: Record<string, FamilyShagun[]>
 }) {
   return (
     <div className="overflow-x-auto border border-marigold/20 rounded-2xl shadow-sm bg-white">
@@ -480,6 +487,7 @@ function GuestTable({
                         if (uniqueFunctions.length === 0) {
                           return <span className="text-[10px] text-maroon/40 italic">None yet</span>
                         }
+                        const shagunChip = <ShagunBadge entries={shagunByFamily[family.id] || []} />
                         
                         const visible = uniqueFunctions.slice(0, 3)
                         const remaining = uniqueFunctions.length - 3
@@ -496,6 +504,7 @@ function GuestTable({
                                 +{remaining} more
                               </span>
                             )}
+                            {shagunChip}
                           </>
                         )
                       })()}
@@ -538,6 +547,8 @@ function GuestTable({
                         <div className="text-maroon/60">
                           📊 Expected Headcount: <span className="font-semibold text-maroon">{family.expected_adults_count || 1} Adults</span>, <span className="font-semibold text-maroon">{family.expected_kids_count || 0} Kids</span>
                         </div>
+
+                        <ShagunHistory entries={shagunByFamily[family.id] || []} />
 
                         {/* Members sub-list */}
                         <div className="space-y-1.5">
@@ -582,12 +593,14 @@ function FamilyCard({
   family,
   canEdit,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  shagun = []
 }: {
   family: Family
   canEdit: boolean
   isExpanded: boolean
   onToggleExpand: () => void
+  shagun?: FamilyShagun[]
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 flex flex-col justify-between">
@@ -668,6 +681,12 @@ function FamilyCard({
           </div>
         </div>
       </div>
+
+      {shagun.length > 0 && (
+        <div className="mt-3">
+          <ShagunHistory entries={shagun} />
+        </div>
+      )}
 
       <div className="mt-4 border-t border-marigold/10 pt-3">
         <button
