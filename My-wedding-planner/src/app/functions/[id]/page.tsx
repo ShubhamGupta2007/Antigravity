@@ -262,7 +262,14 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
             </span>
           </div>
           
-          <DeleteFunctionButton functionId={func.id} />
+          <div className="flex items-center gap-2">
+            <Link href={`/functions/${func.id}/sheet`}>
+              <Button variant="outline" size="sm" className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
+                📄 Day Sheet
+              </Button>
+            </Link>
+            <DeleteFunctionButton functionId={func.id} />
+          </div>
         </div>
       </header>
 
