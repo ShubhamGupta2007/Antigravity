@@ -57,7 +57,8 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 - [x] Ritual Checklist across all functions (`/functions/checklist`) and a printable / WhatsApp Day Sheet per function.
 - [x] Adult / Kid one-tap toggle on members (imports default everyone to adult).
 - [x] `notebook-photo-import` skill + `tools/notebook-import.mts`: update the app from photos of the family's notebook.
-- **Database scripts:** run `supabase/07` → `12` in order (see `supabase/README.md`) before deploying this code.
+- [x] Tasks linked to functions (Tasks filter, function page section); every due payment becomes a task automatically (13).
+- **Database scripts:** run `supabase/07` → `13` in order (see `supabase/README.md`) before deploying this code.
 
 ### ✅ Phase 4 — Tasks & Todo (Partially Complete)
 - [x] Phase 4.1 — Add Task form (`/tasks/add` UI)
@@ -66,7 +67,7 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 ## 🚧 Next Up / Pending Work
 If you are picking up this project, here is exactly what needs to happen next:
 
-0. **Run database scripts 07–12** in the Supabase SQL editor (see `supabase/README.md`), then test `dev`.
+0. **Run database scripts 07–13** in the Supabase SQL editor (see `supabase/README.md`), then test `dev`.
    - Export the current Supabase schema (01–06 were run by hand and are not in the repo) into `supabase/`.
    - Rooms per night (rooms are stored once per family today).
    - Remaining lint: ~50 loose `any` types and unused locals in older pages.

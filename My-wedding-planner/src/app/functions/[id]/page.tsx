@@ -9,6 +9,7 @@ import FunctionGiftingRules from './FunctionGiftingRules'
 import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
 import FunctionShagunReceived, { type ShagunEntry } from './FunctionShagunReceived'
+import { TaskList, type Task } from '@/components/TaskList'
 import {
   DEFAULT_KID_AGE,
   familiesFromAttendance,
@@ -94,15 +95,20 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     console.error('Error fetching function_attendance:', attendanceError)
   }
 
-  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes, shagunRes] = await Promise.all([
+  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes, shagunRes, tasksRes] = await Promise.all([
     supabase.from('function_gifting_rules').select('*').eq('function_id', func.id).order('created_at'),
     supabase.from('function_gift_overrides').select('*').eq('function_id', func.id),
     supabase.from('function_segments').select('*').eq('function_id', func.id),
     supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1),
     supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order'),
     supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id),
-    supabase.from('shagun_received').select('*').eq('function_id', func.id).order('created_at')
+    supabase.from('shagun_received').select('*').eq('function_id', func.id).order('created_at'),
+    supabase.from('tasks').select('*').eq('function_id', func.id).order('deadline', { ascending: true, nullsFirst: false })
   ])
+  // Not done first, then by deadline (already ordered)
+  const functionTasks = ((tasksRes.data || []) as Task[]).sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done'))
+  const openTasks = functionTasks.filter(t => t.status !== 'done')
+  const paymentsDue = openTasks.filter(t => t.expense_id).length
   if (ritualsRes.error) {
     console.error('Error fetching rituals:', ritualsRes.error)
   }
@@ -567,6 +573,31 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               </Button>
             </Link>
           </section>
+
+          {/* Tasks for this function (hidden until 13_tasks_links.sql is run) */}
+          {!tasksRes.error && (
+            <section className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-6">
+              <div className="flex items-center justify-between mb-3 border-b border-marigold/10 pb-2">
+                <h2 className="text-xl font-display font-semibold text-maroon">
+                  ✅ Tasks{openTasks.length > 0 && <span className="ml-2 text-xs font-data font-normal text-maroon/60">{openTasks.length} open</span>}
+                </h2>
+                <Link href={`/tasks/add?function_id=${func.id}`}>
+                  <Button size="sm" className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">+ Add</Button>
+                </Link>
+              </div>
+              {paymentsDue > 0 && (
+                <p className="text-[11px] font-data text-maroon/60 mb-3">💳 {paymentsDue} payment{paymentsDue === 1 ? '' : 's'} due. Added from Budget automatically.</p>
+              )}
+              {functionTasks.length === 0 ? (
+                <p className="text-sm font-data text-maroon/50 italic text-center py-2">No tasks for this function yet.</p>
+              ) : (
+                <TaskList initialTasks={functionTasks} showFunction={false} />
+              )}
+              <Link href={`/tasks?function=${func.id}`} className="block text-center text-xs font-semibold text-maroon/70 hover:text-maroon mt-3">
+                Open in Tasks →
+              </Link>
+            </section>
+          )}
         </div>
       </div>
     </main>
