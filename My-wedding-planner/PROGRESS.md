@@ -50,7 +50,14 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 - [x] Planned gifting saved on the function and mirrored into the linked budget category as an auto "Lifafas & Gifts" sub-budget.
 - [x] Function schedule: timed parts (Baraat, Milni, Pheras...) per function; Timeline view on `/functions` grouped by day with overlap warnings.
 - [x] Rituals per function (Tilak, Milni, Ring Exchange...): items given, by which side/person, to which side/person, qty, est. cost, status (to arrange / arranged / given).
-- Requires `supabase/07_function_planning.sql` and then `supabase/08_function_rituals.sql` to be run in the Supabase SQL editor.
+- [x] Per-family gift quantities (e.g. bhaji boxes × price) on Manage Invites, counted in planned gifting and the budget.
+- [x] RSVP per family per function (invited / confirmed / declined); declined families are not counted.
+- [x] Shagun received tracker per function (hosts only).
+- [x] Ritual item costs flow into the budget as an auto "Ritual items" line.
+- [x] Ritual Checklist across all functions (`/functions/checklist`) and a printable / WhatsApp Day Sheet per function.
+- [x] Adult / Kid one-tap toggle on members (imports default everyone to adult).
+- [x] `notebook-photo-import` skill + `tools/notebook-import.mts`: update the app from photos of the family's notebook.
+- **Database scripts:** run `supabase/07` → `12` in order (see `supabase/README.md`) before deploying this code.
 
 ### ✅ Phase 4 — Tasks & Todo (Partially Complete)
 - [x] Phase 4.1 — Add Task form (`/tasks/add` UI)
@@ -58,6 +65,11 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 
 ## 🚧 Next Up / Pending Work
 If you are picking up this project, here is exactly what needs to happen next:
+
+0. **Run database scripts 07–12** in the Supabase SQL editor (see `supabase/README.md`), then test `dev`.
+   - Export the current Supabase schema (01–06 were run by hand and are not in the repo) into `supabase/`.
+   - Rooms per night (rooms are stored once per family today).
+   - Remaining lint: ~50 loose `any` types and unused locals in older pages.
 
 1. **Phase 4 - Tasks Completion**:
    - Link tasks to functions/budgets as needed.
@@ -90,3 +102,6 @@ If you are picking up this project, here is exactly what needs to happen next:
 - (2026-07-19) Refined Auto-Invite helpers with interactive `window.confirm` dialogues and toggle functionality.
 - (2026-11-05) "Adults" in gifting rules now includes seniors (Adults and Kids are complementary); "Seniors" is a 60+ subset for extra rules.
 - (2026-11-05) Auto-managed sub-budgets (`category_sub_items.is_auto`) are read-only in Budget Setup and Edit Allocation and are skipped by Setup's clear-and-reinsert save.
+- (2026-11-05) function_attendance uniqueness is now NULLS NOT DISTINCT (09), so whole-family invites can't be duplicated.
+- (2026-11-05) A function's budget on its page comes from the linked Budget Setup category; functions.max_budget is only a fallback.
+- (2026-11-05) Budget Setup saves sub-budgets in place (keeps ids) so expense links survive.
