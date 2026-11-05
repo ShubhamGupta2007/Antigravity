@@ -76,6 +76,12 @@ export default async function ManageInvitesPage({ params }: PageProps) {
     .select('*')
     .eq('function_id', func.id)
 
+  // Per-family gift items (e.g. Bhaji box) and their set quantities
+  const [{ data: giftRules }, { data: giftCounts }] = await Promise.all([
+    supabase.from('function_gifting_rules').select('id, rule_name, amount').eq('function_id', func.id).eq('type', 'return_gift').eq('distribution', 'per_family').order('rule_name'),
+    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id)
+  ])
+
   // Fetch required guests
   const { data: required } = await supabase
     .from('function_required_guests')
@@ -101,6 +107,9 @@ export default async function ManageInvitesPage({ params }: PageProps) {
         families={families || []}
         initialAttendance={attendance || []}
         requiredGuests={required || []}
+        giftRules={giftRules || []}
+        initialGiftCounts={giftCounts || []}
+        canEditGifts={['admin', 'planner', 'bride', 'groom'].includes(role)}
       />
     </main>
   )

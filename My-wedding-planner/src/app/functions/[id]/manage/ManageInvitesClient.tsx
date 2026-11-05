@@ -51,18 +51,28 @@ type Attendance = {
 
 type HeadcountDraft = { adults: string; kids: string }
 
+type GiftRuleLite = { id: string; rule_name: string; amount: number }
+type GiftCountLite = { rule_id: string; family_id: string; quantity: number }
+
 type ManageInvitesClientProps = {
   func: any
   families: Family[]
   initialAttendance: Attendance[]
   requiredGuests: any[]
+  giftRules?: GiftRuleLite[]
+  initialGiftCounts?: GiftCountLite[]
+  canEditGifts?: boolean
 }
 
 export default function ManageInvitesClient({
   func,
   families,
   initialAttendance,
-  requiredGuests
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for future required-guest hints
+  requiredGuests,
+  giftRules = [],
+  initialGiftCounts = [],
+  canEditGifts = false
 }: ManageInvitesClientProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [sideFilter, setSideFilter] = useState<'all' | 'groom' | 'bride'>('all')
@@ -101,6 +111,18 @@ export default function ManageInvitesClient({
   })
 
   const kidAge: number = func.kid_age_threshold || DEFAULT_KID_AGE
+
+  // Gift quantities per family ('' = the rule's default of 1 per family)
+  const giftKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
+  const [giftQty, setGiftQty] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {}
+    initialGiftCounts.forEach(c => { map[giftKey(c.rule_id, c.family_id)] = String(c.quantity) })
+    return map
+  })
+  const handleGiftQtyChange = (ruleId: string, familyId: string, value: string) => {
+    setGiftQty(prev => ({ ...prev, [giftKey(ruleId, familyId)]: value }))
+    setHasUnsavedChanges(true)
+  }
 
   const parseCount = (v: string | undefined) => {
     if (v === undefined || v.trim() === '') return null
@@ -281,6 +303,26 @@ export default function ManageInvitesClient({
             rooms_assigned: update.rooms_assigned,
             room_numbers: update.room_numbers
           }).eq('id', update.id)
+        }
+      }
+
+      // Gift quantities (e.g. bhaji boxes): set, change, or clear back to the default
+      if (canEditGifts) {
+        for (const rule of giftRules) {
+          for (const f of families) {
+            const key = giftKey(rule.id, f.id)
+            const initial = initialGiftCounts.find(c => c.rule_id === rule.id && c.family_id === f.id)
+            const next = parseCount(giftQty[key])
+            if (next === null && initial) {
+              const { error } = await supabase.from('function_gift_counts').delete().eq('rule_id', rule.id).eq('family_id', f.id)
+              if (error) throw error
+            } else if (next !== null && next !== initial?.quantity) {
+              const { error } = await supabase
+                .from('function_gift_counts')
+                .upsert({ function_id: func.id, rule_id: rule.id, family_id: f.id, quantity: next }, { onConflict: 'rule_id,family_id' })
+              if (error) throw error
+            }
+          }
         }
       }
 
@@ -591,6 +633,33 @@ export default function ManageInvitesClient({
                     </div>
                   )
                 })()}
+
+                {/* Gift quantities (per-family return gifts like bhaji boxes) */}
+                {isFamilyChecked && giftRules.length > 0 && (
+                  <div className="flex flex-wrap items-end gap-3 bg-marigold/5 rounded-lg p-3 border border-marigold/10">
+                    <div className="text-xs font-semibold text-maroon mr-auto">
+                      🎁 Gifts for this family
+                      <span className="block text-[10px] font-normal text-maroon/50">Blank = 1 each</span>
+                    </div>
+                    {giftRules.map(rule => (
+                      <div key={rule.id} className="space-y-1 w-24">
+                        <label className="text-[10px] uppercase font-bold text-maroon/60 block truncate" htmlFor={`${family.id}-${rule.id}`} title={`${rule.rule_name} (₹${Number(rule.amount).toLocaleString('en-IN')} each)`}>
+                          {rule.rule_name}
+                        </label>
+                        <Input
+                          id={`${family.id}-${rule.id}`}
+                          type="number"
+                          min={0}
+                          placeholder="1"
+                          disabled={!canEditGifts}
+                          value={giftQty[giftKey(rule.id, family.id)] ?? ''}
+                          onChange={(e) => handleGiftQtyChange(rule.id, family.id, e.target.value)}
+                          className="h-7 text-xs bg-white border-marigold/30"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Room Needs Section */}
                 <div className="bg-marigold/5 rounded-lg p-3 border border-marigold/10 space-y-2">
