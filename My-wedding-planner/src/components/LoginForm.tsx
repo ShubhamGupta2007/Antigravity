@@ -218,8 +218,8 @@ export function LoginForm() {
               onChange={(e) => setSide(e.target.value as 'groom' | 'bride')}
               className="flex h-10 w-full rounded-md border border-marigold/50 bg-ivory px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="groom">Ladkewale 🤵‍♂️ (Satyam's Baraati / Team Groom)</option>
-              <option value="bride">Ladkiwale 👰‍♀️ (Swati's Gang / Team Bride)</option>
+              <option value="groom">Ladkewale 🤵‍♂️ (Satyam&apos;s Baraati / Team Groom)</option>
+              <option value="bride">Ladkiwale 👰‍♀️ (Swati&apos;s Gang / Team Bride)</option>
             </select>
           </div>
 

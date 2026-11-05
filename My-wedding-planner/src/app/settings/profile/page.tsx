@@ -6,8 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Save, ShieldAlert, CheckCircle2 } from 'lucide-react'
-import Link from 'next/link'
+import { Save, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function ProfileSettingsPage() {
@@ -133,8 +132,8 @@ export default function ProfileSettingsPage() {
               disabled
               className="w-full h-10 px-3 py-2 rounded-md border border-marigold/30 focus:outline-none bg-gray-100 text-gray-500 cursor-not-allowed text-sm font-semibold"
             >
-              <option value="groom">Groom's Side</option>
-              <option value="bride">Bride's Side</option>
+              <option value="groom">Groom&apos;s Side</option>
+              <option value="bride">Bride&apos;s Side</option>
               <option value="both">Both</option>
             </select>
             <p className="text-[10px] md:text-xs text-maroon/50 font-data leading-tight">Requires Admin approval to change.</p>

@@ -48,12 +48,13 @@ export function ExpenseAnalytics({ expenses, categories, functions }: { expenses
   const radius = center - strokeWidth / 2
   const circumference = 2 * Math.PI * radius
 
-  let currentOffset = 0
   const colors = ['#5C1A33', '#5B7C4F', '#D97706', '#B23A2E', '#0F766E', '#9A3412', '#2563EB', '#DB2777', '#4F46E5']
 
   const slices = data.map((item, i) => {
     const percent = item.total / totalSpent
     const strokeLength = percent * circumference
+    // Each slice starts where the previous ones end
+    const currentOffset = data.slice(0, i).reduce((sum, prev) => sum + (prev.total / totalSpent) * circumference, 0)
     const slice = {
       ...item,
       percent,
@@ -62,7 +63,6 @@ export function ExpenseAnalytics({ expenses, categories, functions }: { expenses
       strokeDashoffset: -currentOffset,
       color: colors[i % colors.length]
     }
-    currentOffset += strokeLength
     return slice
   })
 

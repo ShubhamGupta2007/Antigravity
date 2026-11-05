@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -13,12 +13,10 @@ import { cn } from '@/lib/utils'
 export default function GlobalNavigation() {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createBrowserClient(
+  const supabase = useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-
-  if (pathname === '/login') return null
+  ), [])
 
   const navItems = [
     { name: 'Home', href: '/', icon: Home },
@@ -36,6 +34,7 @@ export default function GlobalNavigation() {
     // Sync initial state from cookie
     const guestCookie = document.cookie.split('; ').find(row => row.startsWith('guest_view='))
     if (guestCookie && guestCookie.split('=')[1] === '1') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- cookie is only readable after hydration
       setIsGuestView(true)
     }
   }, [])
@@ -64,6 +63,9 @@ export default function GlobalNavigation() {
     }
     loadRole()
   }, [supabase])
+
+  // Hooks above must run on every render, so the login-page check comes after them
+  if (pathname === '/login') return null
 
   const visibleNavItems = navItems.filter(item => {
     // If they are a guest (or pending) or have toggled guest view, hide Budget and Guests

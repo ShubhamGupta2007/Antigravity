@@ -56,7 +56,7 @@ export function TaskList({ initialTasks }: { initialTasks: Task[] }) {
   if (tasks.length === 0) {
     return (
       <div className="p-8 bg-white rounded-2xl shadow-sm border border-marigold/20 text-center">
-        <p className="text-sm font-data text-maroon/70">No tasks added yet. You're all caught up!</p>
+        <p className="text-sm font-data text-maroon/70">No tasks added yet. You&apos;re all caught up!</p>
       </div>
     )
   }

@@ -545,13 +545,13 @@ export default function ManageInvitesClient({
             onClick={() => setSideFilter('groom')}
             className={`flex-1 py-1.5 rounded-md transition-all ${sideFilter === 'groom' ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70'}`}
           >
-            🤵‍♂️ Groom's
+            🤵‍♂️ Groom&apos;s
           </button>
           <button 
             onClick={() => setSideFilter('bride')}
             className={`flex-1 py-1.5 rounded-md transition-all ${sideFilter === 'bride' ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70'}`}
           >
-            👰‍♀️ Bride's
+            👰‍♀️ Bride&apos;s
           </button>
         </div>
       </section>

@@ -3,11 +3,10 @@ import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, Settings, Pencil, Filter, X, Calendar, Clock } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { BudgetOverviewInteractive } from '@/components/BudgetOverviewInteractive'
 import { ExpenseAnalytics } from '@/components/ExpenseAnalytics'
 import { AllocationBreakdown } from '@/components/AllocationBreakdown'
-import { DeleteExpenseButton } from '@/components/DeleteExpenseButton'
 import { CategoryFilterDropdown } from '@/components/CategoryFilterDropdown'
 import { QuickEditAllocationModal } from '@/components/QuickEditAllocationModal'
 import { ExpenseLogView } from '@/components/ExpenseLogView'
@@ -206,21 +205,17 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
   const { data: splits } = await splitsQuery
   
   // Calculate totals
-  let totalBudget = 0
-  let totalSpent = 0
   
   // Calculate per category
   const categoryStats = (categories || []).map(cat => {
     const catBudgets = (budgets || []).filter(b => b.category_id === cat.id)
     const maxBudget = catBudgets.reduce((acc, curr) => acc + Number(curr.max_budget), 0)
-    totalBudget += maxBudget
     
     const catSplits = (splits || []).filter(s => {
       const exp = Array.isArray(s.expenses) ? s.expenses[0] : s.expenses
       return exp?.category_id === cat.id
     })
     const spent = catSplits.reduce((acc, curr) => acc + Number(curr.amount), 0)
-    totalSpent += spent
 
     // Count logged transactions for this category
     const catExpenseCount = loggedExpenses.filter(e => e.category_id === cat.id).length
@@ -269,6 +264,8 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
     categoryStats.sort((a, b) => b.maxBudget - a.maxBudget)
   }
 
+  const totalBudget = categoryStats.reduce((sum, c) => sum + c.maxBudget, 0)
+  const totalSpent = categoryStats.reduce((sum, c) => sum + c.spent, 0)
   const overallPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
   
   // Determine color for dial

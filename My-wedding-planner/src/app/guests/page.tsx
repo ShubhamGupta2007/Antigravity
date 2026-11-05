@@ -97,9 +97,9 @@ export default async function GuestsPage() {
   const totalExpected = totalExpectedAdults + totalExpectedKids
   const totalFamiliesCount = guestsFamilies.length
   
-  let totalAdded = 0
-  let closeFamilyCount = 0    // tier_2 expected total
-  let extendedFamilyCount = 0 // tier_3 expected total
+  const totalAdded = 0
+  const closeFamilyCount = 0    // tier_2 expected total
+  const extendedFamilyCount = 0 // tier_3 expected total
   
   let estimatedAdultsCount = 0
   let estimatedKidsCount = 0
