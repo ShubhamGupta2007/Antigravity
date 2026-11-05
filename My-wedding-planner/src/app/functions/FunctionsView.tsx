@@ -20,6 +20,8 @@ export type FunctionCard = {
   families: number
   confirmed: number
   plannedGifting: number
+  /** Cash shagun received at this function (hosts only; 0 otherwise). */
+  shagunReceived: number
   segments: FunctionSegment[]
 }
 
@@ -199,6 +201,7 @@ function TimelineView({ functions }: { functions: FunctionCard[] }) {
                         <span className="flex items-center"><Users className="w-3.5 h-3.5 mr-1 text-marigold" />{f.total} expected{f.total > 0 ? ` (${f.adults} adults${f.kids ? `, ${f.kids} kids` : ''})` : ''}</span>
                         {f.confirmed > 0 && <span className="text-mehendi font-semibold">✅ {f.confirmed} confirmed</span>}
                         {f.plannedGifting > 0 && <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1 text-marigold" />₹{f.plannedGifting.toLocaleString('en-IN')} lifafas</span>}
+                        {f.shagunReceived > 0 && <span className="text-mehendi">🪙 ₹{f.shagunReceived.toLocaleString('en-IN')} received</span>}
                       </div>
 
                       {clashWith && (

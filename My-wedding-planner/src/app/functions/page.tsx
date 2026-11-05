@@ -41,6 +41,17 @@ export default async function FunctionsPage() {
     console.error('Error fetching functions:', functionsError)
   }
 
+  // Shagun received per function (hosts only by database rules; empty until 11_shagun_received.sql is run)
+  const { data: shagunRows } = await supabase.from('shagun_received').select('function_id, amount, item')
+  const shagunByFunction = new Map<string, { cash: number; entries: number; gifts: number }>()
+  ;(shagunRows || []).forEach(r => {
+    const cur = shagunByFunction.get(r.function_id) || { cash: 0, entries: 0, gifts: 0 }
+    cur.cash += Number(r.amount) || 0
+    cur.entries++
+    if (r.item) cur.gifts++
+    shagunByFunction.set(r.function_id, cur)
+  })
+
   // Filter based on role and side
   const visibleFunctions: FunctionCard[] = (functions || [])
     .filter(f => {
@@ -64,9 +75,19 @@ export default async function FunctionsPage() {
         families: hc.families,
         confirmed: hc.confirmedTotal,
         plannedGifting: Math.round((Number(f.planned_lifafa_total) || 0) + (Number(f.planned_return_gift_total) || 0)),
+        shagunReceived: Math.round(shagunByFunction.get(f.id)?.cash || 0),
         segments: (f.function_segments || []) as FunctionSegment[]
       }
     })
+
+  const shagunFunctions = visibleFunctions.filter(f => shagunByFunction.has(f.id))
+  const shagunTotals = shagunFunctions.reduce(
+    (acc, f) => {
+      const s = shagunByFunction.get(f.id)!
+      return { cash: acc.cash + s.cash, entries: acc.entries + s.entries, gifts: acc.gifts + s.gifts }
+    },
+    { cash: 0, entries: 0, gifts: 0 }
+  )
 
   const canAdd = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom' || side
 
@@ -105,7 +126,32 @@ export default async function FunctionsPage() {
           )}
         </div>
       ) : (
-        <FunctionsView functions={visibleFunctions} />
+        <>
+          {shagunFunctions.length > 0 && (
+            <section className="mb-6 bg-gradient-to-r from-mehendi/10 to-marigold/10 border border-mehendi/20 rounded-2xl p-4" aria-label="Shagun received">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-maroon/60">🪙 Shagun received, all functions</p>
+                  <p className="text-2xl font-display font-bold text-maroon">₹{Math.round(shagunTotals.cash).toLocaleString('en-IN')}</p>
+                  <p className="text-xs font-data text-maroon/60">
+                    {shagunTotals.entries} {shagunTotals.entries === 1 ? 'entry' : 'entries'}{shagunTotals.gifts > 0 ? ` • ${shagunTotals.gifts} gifts` : ''}
+                  </p>
+                </div>
+                <ul className="flex flex-wrap gap-2">
+                  {shagunFunctions.map(f => (
+                    <li key={f.id}>
+                      <Link href={`/functions/${f.id}`} className="block text-xs font-data bg-white/80 border border-marigold/20 hover:border-marigold rounded-xl px-3 py-1.5">
+                        <span className="text-maroon/70">{f.name}</span>{' '}
+                        <b className="text-maroon">₹{Math.round(shagunByFunction.get(f.id)!.cash).toLocaleString('en-IN')}</b>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
+          <FunctionsView functions={visibleFunctions} />
+        </>
       )}
 
       {/* Floating Action Button */}
