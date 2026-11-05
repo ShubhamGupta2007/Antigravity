@@ -8,6 +8,7 @@ import DeleteFunctionButton from './DeleteFunctionButton'
 import FunctionGiftingRules from './FunctionGiftingRules'
 import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
+import FunctionShagunReceived, { type ShagunEntry } from './FunctionShagunReceived'
 import {
   DEFAULT_KID_AGE,
   familiesFromAttendance,
@@ -81,13 +82,14 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     console.error('Error fetching function_attendance:', attendanceError)
   }
 
-  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes] = await Promise.all([
+  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes, shagunRes] = await Promise.all([
     supabase.from('function_gifting_rules').select('*').eq('function_id', func.id).order('created_at'),
     supabase.from('function_gift_overrides').select('*').eq('function_id', func.id),
     supabase.from('function_segments').select('*').eq('function_id', func.id),
     supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1),
     supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order'),
-    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id)
+    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id),
+    supabase.from('shagun_received').select('*').eq('function_id', func.id).order('created_at')
   ])
   if (ritualsRes.error) {
     console.error('Error fetching rituals:', ritualsRes.error)
@@ -454,6 +456,15 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
             linkedCategory={linkedCategoryRes.data?.[0] || null}
             functionBudget={maxBudget}
           />
+
+          {/* Shagun received: hosts only; hidden until 11_shagun_received.sql is run */}
+          {canEditSchedule && !shagunRes.error && (
+            <FunctionShagunReceived
+              functionId={func.id}
+              initialEntries={(shagunRes.data || []) as ShagunEntry[]}
+              families={planningFamilies}
+            />
+          )}
         </div>
 
         {/* Right Column: Required Validation Panel & Budget */}
