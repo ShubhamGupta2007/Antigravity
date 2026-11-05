@@ -6,7 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Save, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Search, Trash2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import EmojiPicker from 'emoji-picker-react'
@@ -15,6 +15,7 @@ type Category = {
   id: string
   name: string
   emoji: string
+  function_id?: string | null
 }
 
 type CategoryBudget = {
@@ -44,17 +45,29 @@ export default function BudgetSetupPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Add Category Modal States
   const [newCategoryName, setNewCategoryName] = useState('')
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('✨')
   const [newCategoryDesc, setNewCategoryDesc] = useState('')
   const [newCategoryFunctionId, setNewCategoryFunctionId] = useState('')
+  const [isEventAllotment, setIsEventAllotment] = useState(false)
+  const [createNewEventInModal, setCreateNewEventInModal] = useState(false)
+  const [newEventDate, setNewEventDate] = useState('')
+  const [newEventHostingSide, setNewEventHostingSide] = useState<'groom' | 'bride' | 'joint'>('joint')
   const [addingCategory, setAddingCategory] = useState(false)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
 
+  // Edit Modal States
   const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [editingEmojiId, setEditingEmojiId] = useState<string | null>(null)
   const [tempDescription, setTempDescription] = useState('')
+  const [tempModalCategoryName, setTempModalCategoryName] = useState('')
+  const [tempModalFunctionId, setTempModalFunctionId] = useState<string>('')
+
+  // Inline Rename States
+  const [editingNameId, setEditingNameId] = useState<string | null>(null)
+  const [tempCategoryName, setTempCategoryName] = useState('')
   
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   
@@ -81,6 +94,7 @@ export default function BudgetSetupPage() {
       }
       if (dbUser?.side) {
         setUserSide(dbUser.side)
+        setNewEventHostingSide(dbUser.side as any)
       }
 
       // Fetch categories
@@ -97,7 +111,7 @@ export default function BudgetSetupPage() {
       }
 
       // Fetch functions list for linking dropdown
-      const { data: funcData } = await supabase.from('functions').select('id, name')
+      const { data: funcData } = await supabase.from('functions').select('id, name, event_date').order('name')
       setFunctionsList(funcData || [])
 
       // Fetch existing sub-items
@@ -156,16 +170,8 @@ export default function BudgetSetupPage() {
     }))
   }
 
-  const handleDescriptionChange = (categoryId: string, value: string) => {
-    setHasUnsavedChanges(true)
-    setDescriptions(prev => ({
-      ...prev,
-      [categoryId]: value
-    }))
-  }
-
   const handleDeleteCategory = async (categoryId: string) => {
-    if (!confirm("Are you sure you want to delete this category? All its budget targets will be removed.")) return
+    if (!confirm("Are you sure you want to delete this allotment? All its budget targets will be removed.")) return
     setError(null)
 
     // Delete from categories (category_budgets will cascade automatically)
@@ -194,21 +200,94 @@ export default function BudgetSetupPage() {
       delete copy[categoryId]
       return copy
     })
+    toast.success('Allotment deleted successfully')
+  }
+
+  // Duplicate Check Helpers
+  const normalizedNewName = newCategoryName.trim().toLowerCase()
+  const isDuplicateInCategories = categories.some(c => c.name.trim().toLowerCase() === normalizedNewName)
+  const isDuplicateInFunctions = functionsList.some(f => f.name.trim().toLowerCase() === normalizedNewName)
+  const hasAddDuplicate = !!normalizedNewName && (isDuplicateInCategories || isDuplicateInFunctions)
+
+  const handleConfirmInlineRename = (categoryId: string) => {
+    const trimmed = tempCategoryName.trim()
+    if (!trimmed) {
+      setEditingNameId(null)
+      return
+    }
+    const normalized = trimmed.toLowerCase()
+    const isDup = categories.some(c => c.id !== categoryId && c.name.trim().toLowerCase() === normalized) ||
+                  functionsList.some(f => f.name.trim().toLowerCase() === normalized)
+    
+    if (isDup) {
+      toast.error(`An allotment or event named "${trimmed}" already exists. Please choose a unique name.`)
+      return
+    }
+
+    setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, name: trimmed } : c))
+    setHasUnsavedChanges(true)
+    setEditingNameId(null)
+    toast.success(`Renamed to "${trimmed}"`)
   }
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newCategoryName.trim()) return
+
+    if (hasAddDuplicate) {
+      toast.error(`An allotment or event named "${newCategoryName.trim()}" already exists.`)
+      return
+    }
+
     setAddingCategory(true)
     setError(null)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    let assignedFunctionId: string | null = null
+
+    // If user chose to create a new event for this allotment
+    if (isEventAllotment) {
+      if (createNewEventInModal) {
+        if (!newEventDate) {
+          setError("Please select an event date for the new function.")
+          setAddingCategory(false)
+          return
+        }
+
+        const { data: newFunc, error: funcErr } = await supabase
+          .from('functions')
+          .insert({
+            name: newCategoryName.trim(),
+            event_date: newEventDate,
+            hosting_side: newEventHostingSide,
+            max_budget: 0,
+            created_by: user?.id
+          })
+          .select()
+          .single()
+
+        if (funcErr) {
+          setError(`Failed to create calendar event: ${funcErr.message}`)
+          setAddingCategory(false)
+          return
+        }
+
+        assignedFunctionId = newFunc?.id || null
+        if (newFunc) {
+          setFunctionsList(prev => [...prev, newFunc])
+        }
+      } else if (newCategoryFunctionId) {
+        assignedFunctionId = newCategoryFunctionId
+      }
+    }
 
     const { data: newCat, error: insertErr } = await supabase
       .from('categories')
       .insert({
         name: newCategoryName.trim(),
-        emoji: newCategoryEmoji.trim(),
+        emoji: newCategoryEmoji.trim() || '✨',
         description: newCategoryDesc.trim() || null,
-        function_id: newCategoryFunctionId || null
+        function_id: assignedFunctionId
       })
       .select()
       .single()
@@ -229,7 +308,12 @@ export default function BudgetSetupPage() {
       setNewCategoryEmoji('✨')
       setNewCategoryDesc('')
       setNewCategoryFunctionId('')
+      setIsEventAllotment(false)
+      setCreateNewEventInModal(false)
+      setNewEventDate('')
       setIsAddModalOpen(false)
+      setHasUnsavedChanges(true)
+      toast.success(`Added allotment "${newCat.name}"`)
     }
     setAddingCategory(false)
   }
@@ -258,12 +342,17 @@ export default function BudgetSetupPage() {
       return
     }
 
-    // 2. Update category descriptions and emojis
+    // 2. Update category names, descriptions, emojis and function_ids
     for (const cat of categories) {
       const desc = descriptions[cat.id] || null
       const { error: descError } = await supabase
         .from('categories')
-        .update({ description: desc, emoji: cat.emoji })
+        .update({ 
+          name: cat.name.trim(),
+          description: desc, 
+          emoji: cat.emoji,
+          function_id: cat.function_id || null
+        })
         .eq('id', cat.id)
       
       if (descError) {
@@ -327,6 +416,7 @@ export default function BudgetSetupPage() {
     }
 
     setHasUnsavedChanges(false)
+    toast.success('Budget limits & allocations saved successfully!')
     router.push('/budget')
     router.refresh()
   }
@@ -366,7 +456,7 @@ export default function BudgetSetupPage() {
         <h1 className="text-2xl font-display font-semibold text-maroon">Set Budgets</h1>
       </header>
 
-      {error && <div className="p-4 mb-6 bg-rust-red/10 text-rust-red rounded-lg text-sm">{error}</div>}
+      {error && <div className="p-4 mb-6 bg-rust-red/10 border border-rust-red/20 text-rust-red rounded-lg text-sm">{error}</div>}
 
       {/* Master Budget Section */}
       <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-6 space-y-4 mb-6">
@@ -412,15 +502,19 @@ export default function BudgetSetupPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-6 space-y-6">
         <h2 className="text-md font-display font-semibold text-maroon">Category Allocations</h2>
         
-        <div className="bg-marigold/10 border-l-4 border-marigold p-3 rounded-lg text-xs font-data text-maroon/80">
-          <p className="font-semibold mb-1 flex items-center"><span className="mr-1">💡</span> Events vs. Categories</p>
-          <p className="leading-relaxed">
-            Do <span className="font-bold">not</span> add your events (e.g., Haldi, Sangeet) here! Add them in the <strong>Functions</strong> tab, which automatically creates a budget bucket for each event. This page is for <strong>general categories</strong> like Photography, Outfits, and Jewelry that span the entire wedding.
-          </p>
+        {/* Positive, Unified Guidance Banner */}
+        <div className="bg-marigold/10 border-l-4 border-marigold p-3.5 rounded-xl text-xs font-data text-maroon/80 flex items-start gap-2.5 shadow-sm">
+          <span className="text-base leading-none">💡</span>
+          <div className="space-y-1">
+            <p className="font-bold text-maroon">Unified Event & General Allotments</p>
+            <p className="leading-relaxed">
+              Manage targets for both <strong>general categories</strong> (Photography, Outfits, Jewelry) and <strong>specific events</strong> (Haldi, Sangeet, Reception). Adding an allotment lets you specify whether it applies generally or ties to a wedding function.
+            </p>
+          </div>
         </div>
 
         <p className="text-xs font-data text-maroon/70">
-          Adjust the sliders or type limits for each budget item. This applies to {userSide === 'groom' ? "Satyam's" : "Swati's"} side.
+          Click on any name or pencil icon to rename it. Adjust sliders or enter numeric limits.
         </p>
 
         {categories.length === 0 ? (
@@ -434,6 +528,8 @@ export default function BudgetSetupPage() {
               const trackStyle = {
                 background: `linear-gradient(to right, #800000 0%, #800000 ${percent}%, #f3ebdf ${percent}%, #f3ebdf 100%)`
               }
+              const linkedFunc = functionsList.find(f => f.id === category.function_id)
+
               return (
                 <div key={category.id} className="p-5 rounded-2xl border border-marigold/30 bg-white space-y-5 shadow-sm hover:shadow-md transition-shadow relative">
                   {/* Category Header */}
@@ -461,16 +557,91 @@ export default function BudgetSetupPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="font-display font-bold text-base md:text-lg text-maroon block truncate">{category.name}</span>
+                        {editingNameId === category.id ? (
+                          <div className="flex items-center gap-1.5 py-0.5">
+                            <Input 
+                              type="text"
+                              value={tempCategoryName}
+                              onChange={(e) => setTempCategoryName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  handleConfirmInlineRename(category.id)
+                                } else if (e.key === 'Escape') {
+                                  setEditingNameId(null)
+                                }
+                              }}
+                              autoFocus
+                              className="h-8 text-sm font-display font-bold bg-ivory border-marigold/60 text-maroon px-2 py-0.5 rounded shadow-inner"
+                              placeholder="Allotment name"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleConfirmInlineRename(category.id)}
+                              className="w-7 h-7 flex items-center justify-center rounded bg-mehendi/15 text-mehendi hover:bg-mehendi/25 font-bold text-xs cursor-pointer"
+                              title="Save name"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingNameId(null)}
+                              className="w-7 h-7 flex items-center justify-center rounded bg-maroon/10 text-maroon/60 hover:bg-maroon/20 text-xs font-bold cursor-pointer"
+                              title="Cancel"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 group/name">
+                            <span 
+                              onClick={() => {
+                                setEditingNameId(category.id)
+                                setTempCategoryName(category.name)
+                              }}
+                              className="font-display font-bold text-base md:text-lg text-maroon block truncate cursor-pointer hover:underline decoration-dashed decoration-marigold/60"
+                              title="Click to rename"
+                            >
+                              {category.name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingNameId(category.id)
+                                setTempCategoryName(category.name)
+                              }}
+                              className="opacity-40 group-hover/name:opacity-100 text-maroon/60 hover:text-maroon transition-opacity p-0.5 cursor-pointer"
+                              title="Rename allotment"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Event vs General Badge */}
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {category.function_id ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-data bg-mehendi/15 text-mehendi px-2 py-0.5 rounded-full border border-mehendi/25">
+                              🎪 Event: {linkedFunc?.name || 'Linked Event'}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold font-data bg-marigold/15 text-maroon/70 px-2 py-0.5 rounded-full border border-marigold/25">
+                              ✨ General Allotment
+                            </span>
+                          )}
+                        </div>
+
                         {descriptions[category.id] ? (
                           <button
                             type="button"
                             onClick={() => {
                               setEditingDescriptionId(category.id)
                               setTempDescription(descriptions[category.id] || '')
+                              setTempModalCategoryName(category.name)
+                              setTempModalFunctionId(category.function_id || '')
                               setTempSubItems(subItems[category.id] || [])
                             }}
-                            className="text-[11px] md:text-xs text-maroon/70 font-data block text-left mt-1 hover:text-maroon underline decoration-dotted line-clamp-2 leading-snug"
+                            className="text-[11px] md:text-xs text-maroon/70 font-data block text-left mt-1.5 hover:text-maroon underline decoration-dotted line-clamp-2 leading-snug cursor-pointer"
                           >
                             📝 {descriptions[category.id]}
                           </button>
@@ -480,11 +651,13 @@ export default function BudgetSetupPage() {
                             onClick={() => {
                               setEditingDescriptionId(category.id)
                               setTempDescription('')
+                              setTempModalCategoryName(category.name)
+                              setTempModalFunctionId(category.function_id || '')
                               setTempSubItems(subItems[category.id] || [])
                             }}
-                            className="text-[11px] md:text-xs text-marigold hover:text-maroon font-data block text-left mt-1 font-semibold flex items-center gap-1"
+                            className="text-[11px] md:text-xs text-marigold hover:text-maroon font-data block text-left mt-1.5 font-semibold flex items-center gap-1 cursor-pointer"
                           >
-                            <span className="text-lg leading-none">+</span> Add details
+                            <span className="text-lg leading-none">+</span> Add details & sub-items
                           </button>
                         )}
                       </div>
@@ -504,7 +677,7 @@ export default function BudgetSetupPage() {
                       </div>
                       <button 
                         onClick={() => handleDeleteCategory(category.id)}
-                        className="text-maroon/30 hover:text-rust-red bg-maroon/5 hover:bg-rust-red/10 rounded-full transition-colors w-8 h-8 flex items-center justify-center font-bold"
+                        className="text-maroon/30 hover:text-rust-red bg-maroon/5 hover:bg-rust-red/10 rounded-full transition-colors w-8 h-8 flex items-center justify-center font-bold cursor-pointer"
                         title="Delete category"
                       >
                         ✕
@@ -518,16 +691,16 @@ export default function BudgetSetupPage() {
                       type="range"
                       min="0"
                       max={sliderMax}
-                      step="10000"
-                      style={trackStyle}
-                      className="w-full cursor-pointer h-2.5 bg-marigold/20 rounded-full appearance-none transition-all duration-300 accent-maroon"
+                      step="5000"
                       value={currentVal}
                       onChange={(e) => handleBudgetChange(category.id, e.target.value)}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-maroon"
+                      style={trackStyle}
                     />
-                    <div className="flex justify-between text-[10px] md:text-xs font-data text-maroon/60 font-semibold px-1">
+                    <div className="flex justify-between items-center text-[10px] font-data text-maroon/50">
                       <span>₹0</span>
-                      <span className="text-maroon font-bold bg-marigold/15 px-2.5 py-0.5 rounded-full shadow-sm">{formatLakhs(currentVal)}</span>
-                      <span>Max: {formatLakhs(sliderMax)}</span>
+                      <span className="font-semibold text-maroon/80">{formatLakhs(currentVal)} allocated</span>
+                      <span>{formatLakhs(sliderMax)}</span>
                     </div>
                   </div>
                 </div>
@@ -536,16 +709,23 @@ export default function BudgetSetupPage() {
           </div>
         )}
 
-        {/* Add Category Button */}
-        <div className="border-t border-marigold/20 pt-6 mt-6 flex justify-center">
-          <Button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-maroon/10 text-maroon hover:bg-maroon hover:text-ivory py-6 px-8 rounded-full shadow-sm transition-all border border-maroon/20 font-bold"
-          >
-            + Add Custom Category / Event
-          </Button>
-        </div>
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={() => {
+            setNewCategoryName('')
+            setNewCategoryEmoji('✨')
+            setNewCategoryDesc('')
+            setNewCategoryFunctionId('')
+            setIsEventAllotment(false)
+            setCreateNewEventInModal(false)
+            setNewEventDate('')
+            setIsAddModalOpen(true)
+          }}
+          className="w-full border-dashed border-marigold/60 text-maroon hover:bg-marigold/10 py-6 text-sm font-semibold rounded-xl cursor-pointer"
+        >
+          + Add Custom Allotment (Category or Event)
+        </Button>
       </div>
 
       <div className="relative mt-8">
@@ -557,14 +737,14 @@ export default function BudgetSetupPage() {
         <Button 
           onClick={handleSave} 
           disabled={saving} 
-          className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 shadow-md"
+          className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 shadow-md cursor-pointer font-bold"
         >
           <Save className="w-4 h-4 mr-2" />
           {saving ? 'Saving...' : 'Save & Exit'}
         </Button>
       </div>
 
-      {/* Description Popup Modal */}
+      {/* Description & Sub-Items Popup Modal */}
       {editingDescriptionId && (() => {
         const subItemsTotal = tempSubItems.reduce((acc, s) => acc + (s.target_budget || 0), 0)
         const parentLimit = budgets[editingDescriptionId] || 0
@@ -573,15 +753,49 @@ export default function BudgetSetupPage() {
         return (
           <div className="fixed inset-0 bg-maroon/30 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl border border-marigold/30 p-6 w-full max-w-md shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center">
-                <h3 className="font-display font-bold text-maroon text-base">📝 Category Notes & Sub-Items</h3>
+              <div className="flex justify-between items-center pb-2 border-b border-marigold/15">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">
+                    {categories.find(c => c.id === editingDescriptionId)?.emoji || '📝'}
+                  </span>
+                  <h3 className="font-display font-bold text-maroon text-base">
+                    Edit Allotment Details
+                  </h3>
+                </div>
                 <button 
                   type="button"
                   onClick={() => setEditingDescriptionId(null)}
-                  className="text-maroon/50 hover:text-maroon font-bold text-sm"
+                  className="text-maroon/50 hover:text-maroon font-bold text-sm cursor-pointer"
                 >
                   ✕
                 </button>
+              </div>
+
+              {/* Allotment Name Input */}
+              <div className="space-y-1">
+                <Label className="text-[10px] text-maroon/60 font-semibold block">Allotment / Category Name</Label>
+                <Input 
+                  type="text" 
+                  value={tempModalCategoryName}
+                  onChange={(e) => setTempModalCategoryName(e.target.value)}
+                  className="bg-ivory/50 border-marigold/40 text-xs h-9 text-maroon font-bold"
+                  placeholder="e.g. Photography, Attire"
+                />
+              </div>
+
+              {/* Linked Event / Function Dropdown */}
+              <div className="space-y-1">
+                <Label className="text-[10px] text-maroon/60 font-semibold block">Linked Event / Function (Optional)</Label>
+                <select
+                  value={tempModalFunctionId}
+                  onChange={(e) => setTempModalFunctionId(e.target.value)}
+                  className="w-full text-xs h-9 rounded-md border border-marigold/40 bg-ivory/50 px-2 font-data text-maroon focus:outline-none focus:ring-1 focus:ring-maroon"
+                >
+                  <option value="">✨ General Allotment (Not tied to an event)</option>
+                  {functionsList.map(f => (
+                    <option key={f.id} value={f.id}>🎪 Event: {f.name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Freeform Notes Section */}
@@ -592,7 +806,6 @@ export default function BudgetSetupPage() {
                   value={tempDescription}
                   onChange={(e) => setTempDescription(e.target.value)}
                   placeholder="e.g. general vendor contacts, menu rules, timelines"
-                  autoFocus
                 />
               </div>
 
@@ -639,7 +852,7 @@ export default function BudgetSetupPage() {
                       </div>
                       <button
                         type="button"
-                        className="text-rust-red hover:bg-rust-red/10 p-1 text-xs rounded transition-colors w-7 h-7 flex items-center justify-center font-bold"
+                        className="text-rust-red hover:bg-rust-red/10 p-1 text-xs rounded transition-colors w-7 h-7 flex items-center justify-center font-bold cursor-pointer"
                         onClick={() => setTempSubItems(tempSubItems.filter((_, i) => i !== idx))}
                       >
                         ✕
@@ -650,7 +863,7 @@ export default function BudgetSetupPage() {
 
                 <button
                   type="button"
-                  className="text-xs text-maroon hover:underline flex items-center space-x-1 font-semibold"
+                  className="text-xs text-maroon hover:underline flex items-center space-x-1 font-semibold cursor-pointer"
                   onClick={() => setTempSubItems([...tempSubItems, { category_id: editingDescriptionId, name: '', target_budget: 0 }])}
                 >
                   + Add Sub-Item Row
@@ -663,13 +876,24 @@ export default function BudgetSetupPage() {
                   variant="ghost"
                   type="button"
                   onClick={() => setEditingDescriptionId(null)}
-                  className="text-maroon/70 hover:bg-marigold/10 text-xs"
+                  className="text-maroon/70 hover:bg-marigold/10 text-xs cursor-pointer"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   onClick={() => {
+                    const trimmedName = tempModalCategoryName.trim()
+                    if (trimmedName) {
+                      const normalized = trimmedName.toLowerCase()
+                      const isDup = categories.some(c => c.id !== editingDescriptionId && c.name.trim().toLowerCase() === normalized) ||
+                                    functionsList.some(f => f.id !== tempModalFunctionId && f.name.trim().toLowerCase() === normalized)
+                      if (isDup) {
+                        toast.error(`An allotment or event named "${trimmedName}" already exists. Please choose a unique name.`)
+                        return
+                      }
+                    }
+
                     const cleanItems = tempSubItems.filter(i => i.name.trim())
                     setDescriptions(prev => ({
                       ...prev,
@@ -679,11 +903,25 @@ export default function BudgetSetupPage() {
                       ...prev,
                       [editingDescriptionId]: cleanItems
                     }))
+                    
+                    setCategories(prev => prev.map(c => {
+                      if (c.id === editingDescriptionId) {
+                        return { 
+                          ...c, 
+                          name: trimmedName || c.name,
+                          function_id: tempModalFunctionId || null
+                        }
+                      }
+                      return c
+                    }))
+                    
+                    setHasUnsavedChanges(true)
                     setEditingDescriptionId(null)
+                    toast.success('Updated allotment details')
                   }}
-                  className="bg-maroon text-ivory hover:bg-maroon/90 text-xs font-semibold"
+                  className="bg-maroon text-ivory hover:bg-maroon/90 text-xs font-semibold cursor-pointer"
                 >
-                  Save Note & Sub-Items
+                  Save Changes
                 </Button>
               </div>
             </div>
@@ -691,16 +929,16 @@ export default function BudgetSetupPage() {
         )
       })()}
 
-      {/* Add Category Modal */}
+      {/* Add Category / Event Allotment Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-maroon/30 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl border border-marigold/30 p-6 w-full max-w-md shadow-xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-display font-bold text-maroon text-base">✨ Add Category / Event</h3>
+          <div className="bg-white rounded-2xl border border-marigold/30 p-6 w-full max-w-md shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-marigold/15">
+              <h3 className="font-display font-bold text-maroon text-base">✨ Add New Allotment</h3>
               <button 
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-maroon/50 hover:text-maroon font-bold text-sm"
+                className="text-maroon/50 hover:text-maroon font-bold text-sm cursor-pointer"
               >
                 ✕
               </button>
@@ -713,7 +951,7 @@ export default function BudgetSetupPage() {
                   <button 
                     type="button"
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="w-full h-10 bg-ivory border border-marigold/50 rounded-md text-xl flex items-center justify-center hover:bg-marigold/10 transition-colors shadow-inner"
+                    className="w-full h-10 bg-ivory border border-marigold/50 rounded-md text-xl flex items-center justify-center hover:bg-marigold/10 transition-colors shadow-inner cursor-pointer"
                   >
                     {newCategoryEmoji}
                   </button>
@@ -729,56 +967,142 @@ export default function BudgetSetupPage() {
                   )}
                 </div>
                 <div className="col-span-5">
-                  <Label className="text-[10px] text-maroon/50 block mb-1">Category / Event Name</Label>
+                  <Label className="text-[10px] text-maroon/50 block mb-1">Allotment Name</Label>
                   <Input 
                     type="text" 
-                    placeholder="e.g. Gold Jewelry, Sangeet" 
-                    className="bg-ivory border-marigold/50 font-data text-sm h-10"
+                    placeholder="e.g. Photography, Sangeet, Jewelry" 
+                    className={`bg-ivory border-marigold/50 font-data text-sm h-10 ${hasAddDuplicate ? 'border-rust-red focus-visible:ring-rust-red' : ''}`}
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
                     autoFocus
                   />
                 </div>
-                <div className="col-span-6">
-                  <Label className="text-[10px] text-maroon/50 block mb-1">Link to Event (Optional)</Label>
-                  <select
-                    className="flex w-full rounded-md border border-marigold/50 bg-ivory px-3 py-2 text-sm font-data"
-                    value={newCategoryFunctionId}
-                    onChange={(e) => setNewCategoryFunctionId(e.target.value)}
-                  >
-                    <option value="">None (Item Chunk)</option>
-                    {functionsList.map(f => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-6">
-                  <Label className="text-[10px] text-maroon/50 block mb-1">Short Description</Label>
-                  <Input 
-                    type="text" 
-                    placeholder="e.g. catering, rings, pre-wedding shoot" 
-                    className="bg-ivory border-marigold/50 font-data text-sm h-10"
-                    value={newCategoryDesc}
-                    onChange={(e) => setNewCategoryDesc(e.target.value)}
-                  />
-                </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-4 border-t border-marigold/10">
-                <Button
-                  variant="ghost"
-                  type="button"
+              {/* Duplicate Name Warning Alert */}
+              {hasAddDuplicate && (
+                <div className="p-2.5 bg-rust-red/10 border border-rust-red/25 rounded-lg text-xs font-data text-rust-red flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>An allotment or event named &ldquo;<strong>{newCategoryName.trim()}</strong>&rdquo; already exists. Please choose a distinct name.</span>
+                </div>
+              )}
+
+              {/* Event vs General Allotment Checkbox */}
+              <div className="space-y-3 p-3 bg-ivory/50 rounded-xl border border-marigold/20">
+                <div className="flex items-center space-x-2">
+                  <input 
+                    type="checkbox" 
+                    id="isEventAllotment"
+                    checked={isEventAllotment}
+                    onChange={(e) => {
+                      setIsEventAllotment(e.target.checked)
+                      if (!e.target.checked) {
+                        setCreateNewEventInModal(false)
+                        setNewCategoryFunctionId('')
+                      }
+                    }}
+                    className="w-4 h-4 text-maroon rounded border-marigold/50 focus:ring-maroon cursor-pointer"
+                  />
+                  <Label htmlFor="isEventAllotment" className="text-xs font-bold text-maroon cursor-pointer">
+                    🎪 This allotment is for a specific Event / Function
+                  </Label>
+                </div>
+
+                {isEventAllotment && (
+                  <div className="space-y-3 pt-2 pl-6 border-l-2 border-marigold/30 animate-in slide-in-from-top-1 duration-150">
+                    <div className="flex gap-4 text-xs font-data">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input 
+                          type="radio" 
+                          name="eventMode" 
+                          checked={!createNewEventInModal} 
+                          onChange={() => setCreateNewEventInModal(false)}
+                          className="accent-maroon"
+                        />
+                        <span>Link existing event</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input 
+                          type="radio" 
+                          name="eventMode" 
+                          checked={createNewEventInModal} 
+                          onChange={() => setCreateNewEventInModal(true)}
+                          className="accent-maroon"
+                        />
+                        <span>Create new event now</span>
+                      </label>
+                    </div>
+
+                    {!createNewEventInModal ? (
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-maroon/60 font-semibold block">Select Existing Event</Label>
+                        <select
+                          className="flex w-full rounded-md border border-marigold/50 bg-white px-3 py-2 text-xs font-data"
+                          value={newCategoryFunctionId}
+                          onChange={(e) => setNewCategoryFunctionId(e.target.value)}
+                        >
+                          <option value="">-- Choose an event --</option>
+                          {functionsList.map(f => (
+                            <option key={f.id} value={f.id}>🎪 {f.name} {f.event_date ? `(${f.event_date})` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-maroon/60 font-semibold block">Event Date *</Label>
+                          <Input 
+                            type="date"
+                            required={createNewEventInModal}
+                            value={newEventDate}
+                            onChange={(e) => setNewEventDate(e.target.value)}
+                            className="bg-white border-marigold/50 text-xs h-8"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-maroon/60 font-semibold block">Hosting Side</Label>
+                          <select
+                            className="flex w-full rounded-md border border-marigold/50 bg-white px-2 py-1 text-xs font-data h-8"
+                            value={newEventHostingSide}
+                            onChange={(e) => setNewEventHostingSide(e.target.value as any)}
+                          >
+                            <option value="joint">Joint 🤝</option>
+                            <option value="groom">Ladkewale 🤵‍♂️</option>
+                            <option value="bride">Ladkiwale 👰‍♀️</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Notes */}
+              <div className="space-y-1">
+                <Label className="text-[10px] text-maroon/50 block">Initial Notes / Description (Optional)</Label>
+                <textarea
+                  className="w-full rounded-lg border border-marigold/40 bg-ivory/50 p-2.5 text-xs font-data min-h-[60px] text-maroon focus:outline-none focus:ring-1 focus:ring-maroon"
+                  value={newCategoryDesc}
+                  onChange={(e) => setNewCategoryDesc(e.target.value)}
+                  placeholder="e.g. Budget estimate rules, vendor list"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-marigold/10">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
                   onClick={() => setIsAddModalOpen(false)}
-                  className="text-maroon/70 hover:bg-marigold/10"
+                  className="text-maroon/70 text-xs cursor-pointer"
                 >
                   Cancel
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={addingCategory || !newCategoryName.trim()}
-                  className="bg-maroon text-ivory hover:bg-maroon/90 font-semibold"
+                  disabled={addingCategory || !newCategoryName.trim() || hasAddDuplicate}
+                  className="bg-maroon text-ivory text-xs font-semibold cursor-pointer disabled:opacity-50"
                 >
-                  {addingCategory ? 'Adding...' : 'Add Category'}
+                  {addingCategory ? 'Adding...' : isEventAllotment ? 'Add Event Allotment' : 'Add General Allotment'}
                 </Button>
               </div>
             </form>

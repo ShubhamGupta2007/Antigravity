@@ -6,7 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function AddFunctionPage() {
@@ -14,6 +14,8 @@ export default function AddFunctionPage() {
   const [error, setError] = useState<string | null>(null)
   const [userSide, setUserSide] = useState<string | null>(null)
   const [unallocatedBudget, setUnallocatedBudget] = useState<number | null>(null)
+  const [functionName, setFunctionName] = useState('')
+  const [existingNames, setExistingNames] = useState<string[]>([])
   
   const router = useRouter()
   const supabase = createBrowserClient(
@@ -31,25 +33,34 @@ export default function AddFunctionPage() {
         }
       }
 
-      // Fetch unallocated budget
-      const { data: configs } = await supabase.from('side_configurations').select('master_budget')
-      const masterTotal = (configs || []).reduce((sum, c) => sum + Number(c.master_budget), 0)
+      // Fetch unallocated budget & existing names for duplicate checks
+      const [configsRes, funcsRes, catsRes] = await Promise.all([
+        supabase.from('side_configurations').select('master_budget'),
+        supabase.from('functions').select('name, max_budget'),
+        supabase.from('categories').select('name, allocated_amount')
+      ])
 
-      const { data: funcs } = await supabase.from('functions').select('max_budget')
-      const funcAlloc = (funcs || []).reduce((sum, f) => sum + Number(f.max_budget), 0)
-
-      const { data: cats } = await supabase.from('categories').select('allocated_amount').is('function_id', null)
-      const catAlloc = (cats || []).reduce((sum, c) => sum + Number(c.allocated_amount), 0)
-
+      const masterTotal = (configsRes.data || []).reduce((sum, c) => sum + Number(c.master_budget), 0)
+      const funcAlloc = (funcsRes.data || []).reduce((sum, f) => sum + Number(f.max_budget), 0)
+      const catAlloc = (catsRes.data || []).reduce((sum, c) => sum + Number((c as any).allocated_amount || 0), 0)
       setUnallocatedBudget(masterTotal - funcAlloc - catAlloc)
+
+      const names = [
+        ...(funcsRes.data || []).map(f => f.name.trim().toLowerCase()),
+        ...(catsRes.data || []).map(c => c.name.trim().toLowerCase())
+      ]
+      setExistingNames(names)
     }
     fetchData()
   }, [supabase])
 
+  const normalizedName = functionName.trim().toLowerCase()
+  const isDuplicate = !!normalizedName && existingNames.includes(normalizedName)
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     
-    // Extract form data before any async operations to prevent e.currentTarget from becoming null
+    // Extract form data before any async operations
     const formData = new FormData(e.currentTarget)
     const name = formData.get('name') as string
     const event_date = formData.get('event_date') as string
@@ -61,6 +72,12 @@ export default function AddFunctionPage() {
 
     setLoading(true)
     setError(null)
+
+    if (isDuplicate) {
+      setError(`An event or category named "${name.trim()}" already exists. Please use a unique name.`)
+      setLoading(false)
+      return
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -76,7 +93,7 @@ export default function AddFunctionPage() {
     }
 
     const { error: insertError } = await supabase.from('functions').insert({
-      name,
+      name: name.trim(),
       event_date,
       start_time: start_time || null,
       end_time: end_time || null,
@@ -112,7 +129,20 @@ export default function AddFunctionPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="name">Function Name</Label>
-          <Input id="name" name="name" placeholder="e.g. Haldi, Sangeet" required className="bg-white border-marigold/50" />
+          <Input 
+            id="name" 
+            name="name" 
+            placeholder="e.g. Haldi, Sangeet" 
+            required 
+            value={functionName}
+            onChange={(e) => setFunctionName(e.target.value)}
+            className={`bg-white border-marigold/50 ${isDuplicate ? 'border-rust-red focus-visible:ring-rust-red' : ''}`} 
+          />
+          {isDuplicate && (
+            <p className="text-xs text-rust-red font-medium font-data mt-1 flex items-center gap-1">
+              <span>⚠️</span> An event or budget allotment named &ldquo;<strong>{functionName.trim()}</strong>&rdquo; already exists. Please choose a distinct name.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -163,7 +193,11 @@ export default function AddFunctionPage() {
           )}
         </div>
 
-        <Button type="submit" disabled={loading} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">
+        <Button 
+          type="submit" 
+          disabled={loading || isDuplicate} 
+          className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4 cursor-pointer font-bold disabled:opacity-50"
+        >
           {loading ? 'Saving...' : 'Save Function'}
         </Button>
       </form>

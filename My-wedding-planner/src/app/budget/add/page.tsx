@@ -16,7 +16,7 @@ type Category = {
   function_id?: string | null
 }
 
-type Milestone = {
+type Installment = {
   id: string
   type: 'percent' | 'flat'
   value: string
@@ -24,6 +24,13 @@ type Milestone = {
   date: string
   payment_method: string
   notes: string
+}
+
+// Indian Currency Formatter helper
+const formatIndianCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0
+  }).format(amount)
 }
 
 function AddExpenseForm() {
@@ -34,21 +41,27 @@ function AddExpenseForm() {
   
   const [isScheduleMode, setIsScheduleMode] = useState(false)
   const [totalContractValue, setTotalContractValue] = useState('')
-  const [milestones, setMilestones] = useState<Milestone[]>([
-    { id: '1', type: 'percent', value: '20', status: 'paid', date: new Date().toISOString().split('T')[0], payment_method: 'upi', notes: 'Advance' },
-    { id: '2', type: 'percent', value: '80', status: 'due', date: '', payment_method: 'upi', notes: 'Balance' }
+  const [singleAmount, setSingleAmount] = useState('')
+  const [singleDate, setSingleDate] = useState(() => new Date().toISOString().split('T')[0])
+
+  const [installments, setInstallments] = useState<Installment[]>([
+    { id: '1', type: 'percent', value: '20', status: 'paid', date: new Date().toISOString().split('T')[0], payment_method: 'upi', notes: 'Advance Booking Token' },
+    { id: '2', type: 'percent', value: '80', status: 'due', date: '', payment_method: 'bank_transfer', notes: 'Final Settlement' }
   ])
 
-  const addMilestone = () => {
-    setMilestones([...milestones, { id: Math.random().toString(), type: 'percent', value: '0', status: 'due', date: '', payment_method: 'upi', notes: 'Installment' }])
+  const addInstallment = () => {
+    setInstallments([
+      ...installments, 
+      { id: Math.random().toString(), type: 'percent', value: '0', status: 'due', date: '', payment_method: 'bank_transfer', notes: 'Installment' }
+    ])
   }
   
-  const updateMilestone = (id: string, field: keyof Milestone, val: string) => {
-    setMilestones(milestones.map(m => m.id === id ? { ...m, [field]: val } : m))
+  const updateInstallment = (id: string, field: keyof Installment, val: string) => {
+    setInstallments(installments.map(m => m.id === id ? { ...m, [field]: val } : m))
   }
   
-  const removeMilestone = (id: string) => {
-    setMilestones(milestones.filter(m => m.id !== id))
+  const removeInstallment = (id: string) => {
+    setInstallments(installments.filter(m => m.id !== id))
   }
 
   const [loading, setLoading] = useState(false)
@@ -96,6 +109,23 @@ function AddExpenseForm() {
     init()
   }, [supabase, router])
 
+  // Calculation for installments total in schedule mode
+  const baseContractNum = parseFloat(totalContractValue) || 0
+  const computedInstallments = installments.map(m => {
+    const val = parseFloat(m.value) || 0
+    let amt = 0
+    if (m.type === 'percent') {
+      amt = (val / 100) * baseContractNum
+    } else {
+      amt = val
+    }
+    return { ...m, amt }
+  })
+
+  const totalInstallmentsSum = computedInstallments.reduce((acc, curr) => acc + curr.amt, 0)
+  const installmentDifference = baseContractNum - totalInstallmentsSum
+  const isMatchContract = Math.abs(installmentDifference) < 0.01
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
@@ -117,7 +147,7 @@ function AddExpenseForm() {
     
     const chosenCategory = categories.find(c => c.id === category_id)
     const selectedFunctionId = chosenCategory?.function_id || (formData.get('function_id') as string) || functionId || null
-    
+
     // Resolve funding side based on linked function hosting side
     let fundedSide = dbUser?.side || user.user_metadata?.side
     let isJoint = false
@@ -148,8 +178,19 @@ function AddExpenseForm() {
 
     if (isScheduleMode) {
       const baseAmount = Number(totalContractValue)
+      if (baseAmount <= 0) {
+        setError("Total contract value must be greater than zero.")
+        setLoading(false)
+        return
+      }
+
+      if (!isMatchContract) {
+        setError(`Installments total (₹${formatIndianCurrency(totalInstallmentsSum)}) must match the Total Contract Value (₹${formatIndianCurrency(baseAmount)}). Difference: ₹${formatIndianCurrency(Math.abs(installmentDifference))}`)
+        setLoading(false)
+        return
+      }
       
-      const insertPromises = milestones.map(async (m) => {
+      const insertPromises = installments.map(async (m) => {
         let amt = 0
         if (m.type === 'percent') {
           amt = (Number(m.value) / 100) * baseAmount
@@ -157,15 +198,17 @@ function AddExpenseForm() {
           amt = Number(m.value)
         }
 
-        const expData = {
+        const instDate = m.date || new Date().toISOString().split('T')[0]
+        const expData: any = {
           amount: amt,
           category_id,
           sub_item_id,
           function_id: selectedFunctionId,
           vendor_quick_name: vendorQuickName,
-          payment_method: m.status === 'paid' ? m.payment_method : null,
+          payment_method: m.payment_method || 'bank_transfer',
           status: m.status,
-          due_date: m.status === 'due' ? m.date || null : null,
+          due_date: m.status === 'due' ? instDate : null,
+          created_at: new Date(instDate + 'T12:00:00Z').toISOString(),
           notes: m.notes ? `${m.notes} - ${globalNotes || ''}` : globalNotes,
           created_by: user.id
         }
@@ -202,15 +245,23 @@ function AddExpenseForm() {
       }
     } else {
       const amount = Number(formData.get('amount'))
+      if (amount <= 0) {
+        setError("Amount must be greater than zero.")
+        setLoading(false)
+        return
+      }
+
+      const expDate = singleDate || new Date().toISOString().split('T')[0]
       const { data: expense, error: expError } = await supabase.from('expenses').insert({
         amount,
         category_id,
         sub_item_id,
         function_id: selectedFunctionId,
         vendor_quick_name: vendorQuickName,
-        payment_method: formData.get('payment_method'),
+        payment_method: formData.get('payment_method') || 'upi',
         status: formData.get('status'),
-        due_date: formData.get('due_date') || null,
+        due_date: formData.get('status') === 'due' ? (formData.get('due_date') as string || expDate) : null,
+        created_at: new Date(expDate + 'T12:00:00Z').toISOString(),
         notes: globalNotes,
         created_by: user.id
       }).select().single()
@@ -241,7 +292,7 @@ function AddExpenseForm() {
     if (functionId || selectedFunctionId) {
       router.push(`/functions/${selectedFunctionId || functionId}`)
     } else {
-      router.push('/budget')
+      router.push('/budget?tab=expenses')
     }
     router.refresh()
   }
@@ -259,85 +310,152 @@ function AddExpenseForm() {
           className="w-4 h-4 text-maroon rounded border-marigold/50 focus:ring-maroon cursor-pointer"
         />
         <Label htmlFor="isScheduleMode" className="font-bold text-maroon cursor-pointer">
-          Multi-part Payment Schedule (Advance, Installments)
+          Multi-part Payment Plan (Advance, Installments)
         </Label>
       </div>
 
       {isScheduleMode ? (
         <div className="space-y-4 bg-white p-4 rounded-xl border border-marigold/30 shadow-sm animate-in fade-in duration-300">
           <div className="space-y-2">
-            <Label htmlFor="totalContractValue">Total Contract Value (₹)</Label>
-            <Input id="totalContractValue" name="totalContractValue" type="number" step="0.01" required={isScheduleMode} className="bg-ivory border-marigold/50 text-lg font-bold" value={totalContractValue} onChange={e => setTotalContractValue(e.target.value)} />
+            <div className="flex justify-between items-center">
+              <Label htmlFor="totalContractValue">Total Contract Value (₹)</Label>
+              {baseContractNum > 0 && (
+                <span className="text-xs font-data font-bold text-maroon bg-marigold/15 px-2.5 py-0.5 rounded-full border border-marigold/30">
+                  ₹{formatIndianCurrency(baseContractNum)}
+                </span>
+              )}
+            </div>
+            <Input 
+              id="totalContractValue" 
+              name="totalContractValue" 
+              type="number" 
+              step="any" 
+              required={isScheduleMode} 
+              className="bg-ivory border-marigold/50 text-lg font-bold" 
+              value={totalContractValue} 
+              onChange={e => setTotalContractValue(e.target.value)} 
+              placeholder="e.g. 1000000"
+            />
           </div>
           
           <div className="space-y-3 pt-2">
             <div className="flex justify-between items-center">
-              <Label className="text-maroon font-bold">Payment Milestones</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addMilestone} className="text-xs h-7 border-marigold/50 hover:bg-marigold/20">
-                + Add Milestone
+              <Label className="text-maroon font-bold">Payment Plan Breakdown</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addInstallment} className="text-xs h-7 border-marigold/50 hover:bg-marigold/20 cursor-pointer">
+                + Add Installment
               </Button>
             </div>
             
-            {milestones.map((m, i) => (
-              <div key={m.id} className="p-3 bg-ivory/50 rounded-lg border border-marigold/20 relative space-y-3 shadow-inner">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-maroon/70 bg-marigold/20 px-2 py-0.5 rounded">Milestone {i + 1}</span>
-                  {milestones.length > 1 && (
-                    <button type="button" onClick={() => removeMilestone(m.id)} className="text-red-500 hover:text-red-700 text-xs font-bold">Remove</button>
-                  )}
-                </div>
-                
-                <div className="flex gap-2">
-                  <div className="w-1/3 space-y-1">
-                    <Label className="text-[10px]">Type</Label>
-                    <select value={m.type} onChange={(e) => updateMilestone(m.id, 'type', e.target.value)} className="w-full text-xs h-8 rounded border-marigold/50 bg-white px-1">
-                      <option value="percent">% of Total</option>
-                      <option value="flat">Flat Amount (₹)</option>
-                    </select>
+            {installments.map((m, i) => {
+              const currentAmt = computedInstallments[i]?.amt || 0
+              return (
+                <div key={m.id} className="p-3 bg-ivory/50 rounded-lg border border-marigold/20 relative space-y-3 shadow-inner">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-maroon/70 bg-marigold/20 px-2 py-0.5 rounded">Installment {i + 1}</span>
+                      {baseContractNum > 0 && currentAmt > 0 && (
+                        <span className="text-xs font-data font-semibold text-mehendi bg-mehendi/10 px-2 py-0.5 rounded">
+                          ₹{formatIndianCurrency(currentAmt)}
+                        </span>
+                      )}
+                    </div>
+                    {installments.length > 1 && (
+                      <button type="button" onClick={() => removeInstallment(m.id)} className="text-red-500 hover:text-red-700 text-xs font-bold cursor-pointer">Remove</button>
+                    )}
                   </div>
-                  <div className="w-2/3 space-y-1">
-                    <Label className="text-[10px]">Value</Label>
-                    <Input type="number" value={m.value} onChange={(e) => updateMilestone(m.id, 'value', e.target.value)} required className="h-8 text-xs bg-white" placeholder={m.type === 'percent' ? 'e.g. 20' : 'e.g. 50000'} />
+                  
+                  <div className="flex gap-2">
+                    <div className="w-1/3 space-y-1">
+                      <Label className="text-[10px]">Type</Label>
+                      <select value={m.type} onChange={(e) => updateInstallment(m.id, 'type', e.target.value)} className="w-full text-xs h-8 rounded border-marigold/50 bg-white px-1">
+                        <option value="percent">% of Total</option>
+                        <option value="flat">Flat Amount (₹)</option>
+                      </select>
+                    </div>
+                    <div className="w-2/3 space-y-1">
+                      <Label className="text-[10px]">Value</Label>
+                      <Input type="number" step="any" value={m.value} onChange={(e) => updateInstallment(m.id, 'value', e.target.value)} required className="h-8 text-xs bg-white font-data" placeholder={m.type === 'percent' ? 'e.g. 20' : 'e.g. 50000'} />
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Status</Label>
-                    <select value={m.status} onChange={(e) => updateMilestone(m.id, 'status', e.target.value)} className="w-full text-xs h-8 rounded border-marigold/50 bg-white px-1">
-                      <option value="paid">Paid</option>
-                      <option value="due">Due / Unpaid</option>
-                    </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Status</Label>
+                      <select value={m.status} onChange={(e) => updateInstallment(m.id, 'status', e.target.value)} className="w-full text-xs h-8 rounded border-marigold/50 bg-white px-1">
+                        <option value="paid">Paid</option>
+                        <option value="due">Due / Unpaid</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Date</Label>
+                      <Input type="date" value={m.date} onChange={(e) => updateInstallment(m.id, 'date', e.target.value)} required={m.status === 'due'} className="h-8 text-xs bg-white" />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Date</Label>
-                    <Input type="date" value={m.date} onChange={(e) => updateMilestone(m.id, 'date', e.target.value)} required={m.status === 'due'} className="h-8 text-xs bg-white" />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Method (if paid)</Label>
-                    <select value={m.payment_method} onChange={(e) => updateMilestone(m.id, 'payment_method', e.target.value)} disabled={m.status !== 'paid'} className="w-full text-xs h-8 rounded border-marigold/50 disabled:opacity-50 bg-white px-1">
-                      <option value="upi">UPI</option>
-                      <option value="cash">Cash</option>
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="card">Card</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px]">Note</Label>
-                    <Input type="text" value={m.notes} onChange={(e) => updateMilestone(m.id, 'notes', e.target.value)} className="h-8 text-xs bg-white" placeholder="e.g. Advance" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Payment Method</Label>
+                      <select value={m.payment_method} onChange={(e) => updateInstallment(m.id, 'payment_method', e.target.value)} className="w-full text-xs h-8 rounded border-marigold/50 bg-white px-1">
+                        <option value="upi">UPI</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px]">Note</Label>
+                      <Input type="text" value={m.notes} onChange={(e) => updateInstallment(m.id, 'notes', e.target.value)} className="h-8 text-xs bg-white" placeholder="e.g. Advance Booking Token" />
+                    </div>
                   </div>
                 </div>
+              )
+            })}
+
+            {/* Reconciliation / Match Status Card */}
+            {baseContractNum > 0 && (
+              <div className={`p-3 rounded-xl border text-xs font-data transition-colors flex justify-between items-center ${
+                isMatchContract 
+                  ? 'bg-mehendi/10 border-mehendi/30 text-mehendi' 
+                  : 'bg-rust-red/10 border-rust-red/30 text-rust-red'
+              }`}>
+                <div>
+                  <span className="font-bold block">
+                    {isMatchContract ? '✓ Installments Match Contract' : '⚠️ Installment Total Mismatch'}
+                  </span>
+                  <span className="text-[11px] opacity-80">
+                    Allocated: ₹{formatIndianCurrency(totalInstallmentsSum)} of ₹{formatIndianCurrency(baseContractNum)}
+                  </span>
+                </div>
+                {!isMatchContract && (
+                  <span className="font-bold text-xs">
+                    {installmentDifference > 0 ? `Remaining: ₹${formatIndianCurrency(installmentDifference)}` : `Over by: ₹${formatIndianCurrency(Math.abs(installmentDifference))}`}
+                  </span>
+                )}
               </div>
-            ))}
+            )}
           </div>
         </div>
       ) : (
         <div className="space-y-2 animate-in fade-in duration-300">
-          <Label htmlFor="amount">Amount (₹)</Label>
-          <Input id="amount" name="amount" type="number" step="0.01" required={!isScheduleMode} className="bg-white border-marigold/50 text-lg" />
+          <div className="flex justify-between items-center">
+            <Label htmlFor="amount">Amount (₹)</Label>
+            {parseFloat(singleAmount) > 0 && (
+              <span className="text-xs font-data font-bold text-maroon bg-marigold/15 px-2.5 py-0.5 rounded-full border border-marigold/30">
+                ₹{formatIndianCurrency(parseFloat(singleAmount))}
+              </span>
+            )}
+          </div>
+          <Input 
+            id="amount" 
+            name="amount" 
+            type="number" 
+            step="any" 
+            required={!isScheduleMode} 
+            value={singleAmount}
+            onChange={(e) => setSingleAmount(e.target.value)}
+            placeholder="e.g. 50000"
+            className="bg-white border-marigold/50 text-lg font-data" 
+          />
         </div>
       )}
 
@@ -370,7 +488,7 @@ function AddExpenseForm() {
             >
               <option value="">-- Select Sub-item --</option>
               {filtered.map(s => (
-                <option key={s.id} value={s.id}>{s.name} (Limit: ₹{s.target_budget})</option>
+                <option key={s.id} value={s.id}>{s.name} (Limit: ₹{formatIndianCurrency(s.target_budget)})</option>
               ))}
             </select>
           </div>
@@ -396,26 +514,39 @@ function AddExpenseForm() {
         <>
           <div className="grid grid-cols-2 gap-4 animate-in fade-in">
             <div className="space-y-2">
+              <Label htmlFor="expense_date">Transaction Date</Label>
+              <Input 
+                id="expense_date" 
+                name="expense_date" 
+                type="date" 
+                value={singleDate} 
+                onChange={(e) => setSingleDate(e.target.value)} 
+                className="bg-white border-marigold/50" 
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <select id="status" name="status" required={!isScheduleMode} className="flex h-10 w-full rounded-md border border-marigold/50 bg-white px-3 py-2 text-sm">
                 <option value="paid">Paid</option>
                 <option value="due">Due / Unpaid</option>
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 animate-in fade-in">
             <div className="space-y-2">
               <Label htmlFor="payment_method">Payment Method</Label>
               <select id="payment_method" name="payment_method" required={!isScheduleMode} className="flex h-10 w-full rounded-md border border-marigold/50 bg-white px-3 py-2 text-sm">
                 <option value="upi">UPI</option>
-                <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
+                <option value="cash">Cash</option>
                 <option value="card">Card</option>
               </select>
             </div>
-          </div>
-
-          <div className="space-y-2 animate-in fade-in">
-            <Label htmlFor="due_date">Due Date (if unpaid)</Label>
-            <Input id="due_date" name="due_date" type="date" className="bg-white border-marigold/50" />
+            <div className="space-y-2">
+              <Label htmlFor="due_date">Due Date (if unpaid)</Label>
+              <Input id="due_date" name="due_date" type="date" className="bg-white border-marigold/50" />
+            </div>
           </div>
         </>
       )}
@@ -426,13 +557,17 @@ function AddExpenseForm() {
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm text-center">
+        <div className="p-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm text-center font-medium">
           {error}
         </div>
       )}
 
-      <Button type="submit" disabled={loading || categories.length === 0} className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4">
-        {loading ? 'Saving...' : 'Save Expense'}
+      <Button 
+        type="submit" 
+        disabled={loading || categories.length === 0 || (isScheduleMode && !isMatchContract)} 
+        className="w-full bg-maroon text-ivory hover:bg-maroon/90 py-6 mt-4 cursor-pointer font-bold text-base shadow-md disabled:opacity-50"
+      >
+        {loading ? 'Saving...' : isScheduleMode ? `Save Payment Plan (${installments.length} Installments • ₹${formatIndianCurrency(baseContractNum)})` : 'Save Expense'}
       </Button>
     </form>
   )
