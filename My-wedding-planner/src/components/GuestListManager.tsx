@@ -4,6 +4,7 @@ import { useState, Fragment, useEffect } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { UserPlus, Search, ChevronDown, ChevronUp, Plus, CalendarDays, Settings, Edit2 } from 'lucide-react'
+import KidToggle from './KidToggle'
 
 type FamilyMember = {
   id: string
@@ -551,6 +552,7 @@ function GuestTable({
                                     {member.age ? `, ${member.age} yrs` : ''}
                                     {member.gender && member.gender !== 'Unknown' ? `, ${member.gender}` : ''})
                                   </span>
+                                  <KidToggle memberId={member.id} age={member.age} initialIsKid={member.is_kid_for_gifting} canEdit={canEdit} />
                                   {canEdit && (
                                     <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1">
                                       <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>
@@ -698,6 +700,7 @@ function FamilyCard({
                         {member.relation_to_head || 'Member'}
                         {member.age ? `, ${member.age} yrs` : ''}
                       </span>
+                      <KidToggle memberId={member.id} age={member.age} initialIsKid={member.is_kid_for_gifting} canEdit={canEdit} />
                       {canEdit && (
                         <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>
