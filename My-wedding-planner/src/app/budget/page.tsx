@@ -636,6 +636,60 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
       ) : (
         /* ================= EXPENSE MANAGER TAB ================= */
         <div className="space-y-6">
+          {/* Top Cash Flow Summary Cards: Total Incurred, Total Paid, Remaining Due */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            {/* Total Incurred / Committed */}
+            <div className="bg-white border border-marigold/40 p-4 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+              <span className="text-[10px] font-sans font-bold text-maroon/50 uppercase tracking-wider block mb-1">
+                {hasCategoryFilter && selectedCategoryObjs.length === 1
+                  ? `${selectedCategoryObjs[0].name} Total`
+                  : hasCategoryFilter
+                    ? `Selected (${selectedCategoryObjs.length}) Total`
+                    : 'Total Incurred / Committed'}
+              </span>
+              <span className="text-2xl font-extrabold font-sans text-maroon tracking-tight">
+                {formatCurrency(totalPaid + totalPending)}
+              </span>
+              <span className="text-[10px] text-maroon/50 font-data mt-0.5">
+                {displayedExpenses.length} {displayedExpenses.length === 1 ? 'transaction' : 'transactions'}
+              </span>
+            </div>
+
+            {/* Total Paid */}
+            <div className="bg-white border border-mehendi/30 p-4 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+              <span className="text-[10px] font-sans font-bold text-mehendi uppercase tracking-wider block mb-1">
+                {hasCategoryFilter && selectedCategoryObjs.length === 1
+                  ? `${selectedCategoryObjs[0].name} Paid`
+                  : hasCategoryFilter
+                    ? `Selected (${selectedCategoryObjs.length}) Paid`
+                    : 'Total Paid'}
+              </span>
+              <span className="text-2xl font-extrabold font-sans text-mehendi tracking-tight">
+                {formatCurrency(totalPaid)}
+              </span>
+              <span className="text-[10px] text-mehendi/70 font-data mt-0.5">
+                {totalPaid + totalPending > 0 ? `${Math.round((totalPaid / (totalPaid + totalPending)) * 100)}% settled` : '0%'}
+              </span>
+            </div>
+
+            {/* Remaining Due */}
+            <div className="bg-white border border-rust-red/30 p-4 rounded-2xl shadow-sm text-center flex flex-col justify-center">
+              <span className="text-[10px] font-sans font-bold text-rust-red uppercase tracking-wider block mb-1">
+                {hasCategoryFilter && selectedCategoryObjs.length === 1
+                  ? `${selectedCategoryObjs[0].name} Due`
+                  : hasCategoryFilter
+                    ? `Selected (${selectedCategoryObjs.length}) Due`
+                    : 'Remaining Due'}
+              </span>
+              <span className="text-2xl font-extrabold font-sans text-rust-red tracking-tight">
+                {formatCurrency(totalPending)}
+              </span>
+              <span className="text-[10px] text-rust-red/70 font-data mt-0.5">
+                {totalPaid + totalPending > 0 ? `${Math.round((totalPending / (totalPaid + totalPending)) * 100)}% pending` : '0%'}
+              </span>
+            </div>
+          </div>
+
           {/* Category Multi-Filter Dropdown */}
           <CategoryFilterDropdown
             categories={(categories || []).map(c => ({
@@ -648,30 +702,6 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
             activeSide={activeSide}
             totalExpensesCount={loggedExpenses.length}
           />
-
-          {/* Paid vs Due Cash Flow Summary Card */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white border border-mehendi/25 p-4 rounded-2xl shadow-sm text-center">
-              <span className="text-[10px] font-data text-maroon/50 uppercase tracking-wider block mb-1">
-                {hasCategoryFilter && selectedCategoryObjs.length === 1
-                  ? `${selectedCategoryObjs[0].name} Paid`
-                  : hasCategoryFilter
-                    ? `Selected (${selectedCategoryObjs.length}) Paid`
-                    : 'Total Paid'}
-              </span>
-              <span className="text-xl font-bold font-data text-mehendi">{formatCurrency(totalPaid)}</span>
-            </div>
-            <div className="bg-white border border-rust-red/25 p-4 rounded-2xl shadow-sm text-center">
-              <span className="text-[10px] font-data text-maroon/50 uppercase tracking-wider block mb-1">
-                {hasCategoryFilter && selectedCategoryObjs.length === 1
-                  ? `${selectedCategoryObjs[0].name} Due`
-                  : hasCategoryFilter
-                    ? `Selected (${selectedCategoryObjs.length}) Due`
-                    : 'Remaining Due'}
-              </span>
-              <span className="text-xl font-bold font-data text-rust-red">{formatCurrency(totalPending)}</span>
-            </div>
-          </div>
 
           {/* Transactions Log Section */}
           <section className="space-y-4">
