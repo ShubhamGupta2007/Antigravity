@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatTime, sortSegments } from '@/lib/functionPlanning'
+import RitualItemForm, { type RitualPerson } from './RitualItemForm'
 
 type Side = 'groom' | 'bride' | 'joint'
 type ToSide = Side | 'other'
@@ -25,6 +26,8 @@ export type RitualItem = {
   est_cost: number | null
   status: Status
   notes: string | null
+  /** 'activity' = something done (tilak, chunni chadhana); missing before 15_ritual_activities.sql */
+  kind?: 'gift' | 'activity' | null
 }
 
 export type Ritual = {
@@ -56,6 +59,7 @@ const STATUS: Record<Status, { label: string; cls: string; next: Status }> = {
   arranged: { label: '📦 Arranged', cls: 'bg-marigold/20 text-maroon', next: 'given' },
   given: { label: '✅ Given', cls: 'bg-mehendi/15 text-mehendi', next: 'pending' }
 }
+const ACTIVITY_LABEL: Record<Status, string> = { pending: '⏳ To do', arranged: '👍 Ready', given: '✅ Done' }
 
 const SUGGESTIONS = ['Tilak', 'Ring Exchange', 'Shagun', 'Chunni Chadhana', 'Milni', 'Varmala', 'Kanyadaan', 'Vidaai']
 
@@ -77,13 +81,15 @@ export default function FunctionRituals({
   canEdit,
   initialRituals,
   storedRitualTotal = 0,
-  linkedCategory = null
+  linkedCategory = null,
+  people = []
 }: {
   functionId: string
   canEdit: boolean
   initialRituals: Ritual[]
   storedRitualTotal?: number
   linkedCategory?: { id: string; name: string } | null
+  people?: RitualPerson[]
 }) {
   const supabase = useMemo(() => createClient(), [])
   const [rituals, setRituals] = useState<Ritual[]>(() =>
@@ -162,35 +168,6 @@ export default function FunctionRituals({
   }
 
   // ---- Items -------------------------------------------------------------
-  const saveItem = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!itemForm) return
-    const fd = new FormData(e.currentTarget)
-    const cost = String(fd.get('est_cost') || '').trim()
-    const payload = {
-      ritual_id: itemForm.ritualId,
-      item: String(fd.get('item') || '').trim(),
-      quantity: text(fd, 'quantity'),
-      given_by_side: text(fd, 'given_by_side'),
-      given_by: text(fd, 'given_by'),
-      given_to_side: text(fd, 'given_to_side'),
-      given_to: text(fd, 'given_to'),
-      est_cost: cost === '' ? null : Number(cost),
-      status: (fd.get('status') as Status) || 'pending',
-      notes: text(fd, 'notes')
-    }
-    const editing = itemForm.editing
-    setSaving(true)
-    const { data, error: err } = editing
-      ? await supabase.from('ritual_items').update(payload).eq('id', editing.id).select().single()
-      : await supabase.from('ritual_items').insert(payload).select().single()
-    setSaving(false)
-    if (err) return setError(err.message)
-    updateItems(itemForm.ritualId, items => (editing ? items.map(i => (i.id === data.id ? data : i)) : [...items, data]))
-    setItemForm(null)
-    setError(null)
-  }
-
   const deleteItem = async (item: RitualItem) => {
     if (!window.confirm(`Remove "${item.item}"?`)) return
     const { error: err } = await supabase.from('ritual_items').delete().eq('id', item.id)
@@ -207,8 +184,6 @@ export default function FunctionRituals({
       updateItems(item.ritual_id, items => items.map(i => (i.id === item.id ? { ...i, status: item.status } : i)))
     }
   }
-
-  const selectCls = 'w-full bg-white border border-marigold/50 rounded-md h-9 px-2 text-sm'
 
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-6">
@@ -309,13 +284,13 @@ export default function FunctionRituals({
 
               <ul className="divide-y divide-marigold/10">
                 {items.length === 0 && !isItemFormHere && (
-                  <li className="p-3 text-xs font-data text-maroon/40 italic">Nothing listed to give yet.</li>
+                  <li className="p-3 text-xs font-data text-maroon/40 italic">Nothing planned yet: add what is given, or what someone does.</li>
                 )}
                 {items.map(item => (
                   <li key={item.id} className="p-3 space-y-1.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-maroon">
-                        🎁 {item.item}
+                        {item.kind === 'activity' ? '🙌' : '🎁'} {item.item}
                         {item.quantity && <span className="font-normal text-maroon/60"> × {item.quantity}</span>}
                         {item.est_cost ? <span className="ml-2 text-xs font-data font-normal text-maroon/60">{rupees(Number(item.est_cost))}</span> : null}
                       </p>
@@ -327,7 +302,7 @@ export default function FunctionRituals({
                           title={canEdit ? 'Tap to change status' : undefined}
                           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS[item.status].cls} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
                         >
-                          {STATUS[item.status].label}
+                          {item.kind === 'activity' ? ACTIVITY_LABEL[item.status] : STATUS[item.status].label}
                         </button>
                         {canEdit && (
                           <>
@@ -342,10 +317,10 @@ export default function FunctionRituals({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-data text-maroon/70">
-                      <span className="text-[10px] uppercase font-bold text-maroon/40">From</span>
+                      <span className="text-[10px] uppercase font-bold text-maroon/40">{item.kind === 'activity' ? 'By' : 'From'}</span>
                       <Party side={item.given_by_side} who={item.given_by} />
                       <ArrowRight className="w-3.5 h-3.5 text-marigold" aria-label="to" />
-                      <span className="text-[10px] uppercase font-bold text-maroon/40">To</span>
+                      <span className="text-[10px] uppercase font-bold text-maroon/40">{item.kind === 'activity' ? 'For' : 'To'}</span>
                       <Party side={item.given_to_side} who={item.given_to} />
                     </div>
                     {item.notes && <p className="text-[11px] font-data text-maroon/50">{item.notes}</p>}
@@ -354,69 +329,23 @@ export default function FunctionRituals({
               </ul>
 
               {isItemFormHere ? (
-                <form key={itemForm?.editing?.id || 'new'} onSubmit={saveItem} className="p-3 border-t border-marigold/15 bg-white/70 rounded-b-xl space-y-3">
-                  {error && <div className="p-2 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded font-data">{error}</div>}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1 col-span-2">
-                      <Label className="text-xs text-maroon font-semibold">What is given</Label>
-                      <Input name="item" required defaultValue={itemForm?.editing?.item} placeholder="e.g. Shagun lifafa, Kambal, Ring" className="bg-white border-marigold/50 h-9 text-sm" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-maroon font-semibold">Qty</Label>
-                      <Input name="quantity" defaultValue={itemForm?.editing?.quantity || ''} placeholder="e.g. 2" className="bg-white border-marigold/50 h-9 text-sm" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <fieldset className="space-y-1.5 p-2 rounded-lg border border-marigold/20">
-                      <legend className="text-[10px] uppercase font-bold text-maroon/60 px-1">Given by</legend>
-                      <select name="given_by_side" defaultValue={itemForm?.editing?.given_by_side || ''} className={selectCls} aria-label="Given by side">
-                        <option value="">Side…</option>
-                        <option value="groom">{SIDE_LABEL.groom}</option>
-                        <option value="bride">{SIDE_LABEL.bride}</option>
-                        <option value="joint">{SIDE_LABEL.joint}</option>
-                      </select>
-                      <Input name="given_by" defaultValue={itemForm?.editing?.given_by || ''} placeholder="Person, e.g. Groom's Mama ji" className="bg-white border-marigold/50 h-9 text-sm" aria-label="Given by person" />
-                    </fieldset>
-                    <fieldset className="space-y-1.5 p-2 rounded-lg border border-marigold/20">
-                      <legend className="text-[10px] uppercase font-bold text-maroon/60 px-1">Given to</legend>
-                      <select name="given_to_side" defaultValue={itemForm?.editing?.given_to_side || ''} className={selectCls} aria-label="Given to side">
-                        <option value="">Side…</option>
-                        <option value="groom">{SIDE_LABEL.groom}</option>
-                        <option value="bride">{SIDE_LABEL.bride}</option>
-                        <option value="joint">{SIDE_LABEL.joint}</option>
-                        <option value="other">{SIDE_LABEL.other} (pandit, staff…)</option>
-                      </select>
-                      <Input name="given_to" defaultValue={itemForm?.editing?.given_to || ''} placeholder="Person, e.g. Bride's Mama ji" className="bg-white border-marigold/50 h-9 text-sm" aria-label="Given to person" />
-                    </fieldset>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-maroon font-semibold">Est. cost (₹)</Label>
-                      <Input name="est_cost" type="number" min={0} defaultValue={itemForm?.editing?.est_cost ?? ''} placeholder="optional" className="bg-white border-marigold/50 h-9 text-sm" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-maroon font-semibold">Status</Label>
-                      <select name="status" defaultValue={itemForm?.editing?.status || 'pending'} className={selectCls}>
-                        <option value="pending">To arrange</option>
-                        <option value="arranged">Arranged</option>
-                        <option value="given">Given</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-maroon font-semibold">Notes</Label>
-                    <Input name="notes" defaultValue={itemForm?.editing?.notes || ''} placeholder="e.g. Keep in red potli, with 11 dry fruit boxes" className="bg-white border-marigold/50 h-9 text-sm" />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setItemForm(null)} className="border-marigold/30 text-maroon h-8 text-xs">Cancel</Button>
-                    <Button type="submit" disabled={saving} className="bg-maroon text-ivory h-8 text-xs min-w-[90px]">{saving ? 'Saving...' : 'Save'}</Button>
-                  </div>
-                </form>
+                <RitualItemForm
+                  key={itemForm?.editing?.id || 'new'}
+                  ritualId={ritual.id}
+                  editing={itemForm?.editing || null}
+                  people={people}
+                  supabase={supabase}
+                  onCancel={() => setItemForm(null)}
+                  onSaved={(rows, replacedId) => {
+                    updateItems(ritual.id, items => (replacedId ? items.map(i => (i.id === replacedId ? rows[0] : i)) : [...items, ...rows]))
+                    setItemForm(null)
+                  }}
+                />
               ) : (
                 canEdit && (
                   <div className="p-2 border-t border-marigold/10">
                     <button type="button" onClick={() => { setError(null); setItemForm({ ritualId: ritual.id, editing: null }) }} className="text-xs font-semibold text-maroon hover:underline px-1">
-                      + Add item to give
+                      + Add something given or done
                     </button>
                   </div>
                 )

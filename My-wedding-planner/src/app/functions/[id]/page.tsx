@@ -8,6 +8,7 @@ import DeleteFunctionButton from './DeleteFunctionButton'
 import FunctionGiftingRules from './FunctionGiftingRules'
 import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
+import type { RitualPerson } from './RitualItemForm'
 import FunctionShagunReceived, { type ShagunEntry } from './FunctionShagunReceived'
 import { TaskList, type Task } from '@/components/TaskList'
 import FunctionGuestDetails from './FunctionGuestDetails'
@@ -183,6 +184,31 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     .filter(m => m.note || m.travel)
     .map(m => ({ familyName: planningFamilies.find(f => f.id === m.family_id)?.family_name || 'Family', note: m.note, travel: m.travel, submittedAt: m.submitted_at }))
 
+  // People coming to this function, for tap-to-pick givers/receivers in rituals
+  const ritualPeople: RitualPerson[] = (() => {
+    const list: RitualPerson[] = []
+    planningFamilies.forEach(f => {
+      const rows = attendanceRows.filter(a => a.family_id === f.id)
+      const familyRow = rows.find(a => a.member_id === null)
+      if (familyRow?.rsvp_status === 'declined') return
+      const familyName = f.family_name || 'Family'
+      const side = f.side === 'groom' || f.side === 'bride' ? f.side : null
+      const members = (f.family_members || []).filter(m => familyRow || rows.some(r => r.member_id === m.id))
+      if (members.length === 0) {
+        list.push({ key: `family-${f.id}`, label: `${familyName} family`, family: familyName, side })
+        return
+      }
+      members.forEach(m => {
+        if (m.name?.trim()) list.push({ key: m.id, label: m.name.trim(), family: familyName, side })
+      })
+    })
+    const counts = new Map<string, number>()
+    list.forEach(p => counts.set(p.label.toLowerCase(), (counts.get(p.label.toLowerCase()) || 0) + 1))
+    return list
+      .map(p => ((counts.get(p.label.toLowerCase()) || 0) > 1 ? { ...p, label: `${p.label} (${p.family})` } : p))
+      .sort((a, b) => a.family.localeCompare(b.family) || a.label.localeCompare(b.label))
+  })()
+
   const plannedGifting = Math.round((Number(func.planned_lifafa_total) || 0) + (Number(func.planned_return_gift_total) || 0))
 
   let roomsRequired = 0
@@ -321,6 +347,13 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                 📄 Day Sheet
               </Button>
             </Link>
+            {canEditSchedule && (
+              <Link href={`/functions/${func.id}/edit`}>
+                <Button variant="outline" size="sm" className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
+                  ✏️ Edit
+                </Button>
+              </Link>
+            )}
             <DeleteFunctionButton functionId={func.id} />
           </div>
         </div>
@@ -393,6 +426,7 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               initialRituals={(ritualsRes.data || []) as Ritual[]}
               storedRitualTotal={Number(func.planned_ritual_total) || 0}
               linkedCategory={linkedCategoryRes.data?.[0] || null}
+              people={ritualPeople}
             />
           )}
 

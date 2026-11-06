@@ -19,7 +19,7 @@ import {
 
 type Item = {
   id: string; item: string; quantity: string | null; given_by_side: string | null; given_by: string | null
-  given_to_side: string | null; given_to: string | null; status: string
+  given_to_side: string | null; given_to: string | null; status: string; kind?: string | null
 }
 type Ritual = { id: string; name: string; start_time: string | null; description: string | null; sort_order: number; ritual_items: Item[] | null }
 
@@ -60,7 +60,7 @@ export default async function FunctionSheetPage({ params }: { params: Promise<{ 
     hc.total ? `👥 ${hc.total} guests expected (${hc.adults} adults${hc.kids ? `, ${hc.kids} kids` : ''})` : '',
     segments.length ? `\n*Schedule*\n${segments.map(s => `${range(s.start_time, s.end_time)} – ${s.name}${s.location ? ` (${s.location})` : ''}`).join('\n')}` : '',
     rituals.length
-      ? `\n*Rituals*\n${rituals.map(r => `• ${r.name}${r.start_time ? ` (${formatTime(r.start_time)})` : ''}${(r.ritual_items || []).map(i => `\n   – ${i.item}${i.quantity ? ` ×${i.quantity}` : ''}: ${party(i.given_by_side, i.given_by)} → ${party(i.given_to_side, i.given_to)}`).join('')}`).join('\n')}`
+      ? `\n*Rituals*\n${rituals.map(r => `• ${r.name}${r.start_time ? ` (${formatTime(r.start_time)})` : ''}${(r.ritual_items || []).map(i => `\n   – ${i.kind === 'activity' ? '🙌 ' : ''}${i.item}${i.quantity ? ` ×${i.quantity}` : ''}: ${party(i.given_by_side, i.given_by)} → ${party(i.given_to_side, i.given_to)}`).join('')}`).join('\n')}`
       : ''
   ].filter(Boolean).join('\n')
 
@@ -103,7 +103,7 @@ export default async function FunctionSheetPage({ params }: { params: Promise<{ 
 
       {rituals.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-display font-semibold mb-2">Rituals – who gives what</h2>
+          <h2 className="text-lg font-display font-semibold mb-2">Rituals – who gives and does what</h2>
           <div className="space-y-4">
             {rituals.map(r => (
               <div key={r.id} className="break-inside-avoid">
@@ -123,7 +123,7 @@ export default async function FunctionSheetPage({ params }: { params: Promise<{ 
                       {(r.ritual_items || []).map(i => (
                         <tr key={i.id} className="border-b border-maroon/10 align-top">
                           <td className="py-1 pr-2">{i.status === 'given' ? '☑' : '☐'}</td>
-                          <td className="py-1 pr-2 font-semibold">{i.item}{i.quantity ? ` × ${i.quantity}` : ''}</td>
+                          <td className="py-1 pr-2 font-semibold">{i.kind === 'activity' ? '🙌 ' : ''}{i.item}{i.quantity ? ` × ${i.quantity}` : ''}</td>
                           <td className="py-1 pr-2">{party(i.given_by_side, i.given_by)}</td>
                           <td className="py-1">{party(i.given_to_side, i.given_to)}</td>
                         </tr>

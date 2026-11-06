@@ -25,7 +25,8 @@ export default async function RitualChecklistPage() {
     .flatMap(f =>
       [...(f.function_rituals || [])]
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .flatMap(r => (r.ritual_items || []).map(i => ({
+        // Things done (tilak, chunni chadhana) need nothing bought, so only gifts are listed
+        .flatMap(r => (r.ritual_items || []).filter((i: { kind?: string | null }) => i.kind !== 'activity').map(i => ({
           ...i,
           ritualName: r.name,
           functionId: f.id,
