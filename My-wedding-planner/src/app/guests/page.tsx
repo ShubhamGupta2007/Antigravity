@@ -3,34 +3,9 @@ import type { FamilyShagun } from '@/components/ShagunHistory'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
-import GuestListManager from '@/components/GuestListManager'
-
-// Define the shape of our data based on our schema
-type FamilyMember = {
-  id: string
-  name: string
-  age: number | null
-  relation_to_head: string | null
-  gender: string
-  is_kid_for_gifting: boolean
-}
-
-type Family = {
-  id: string
-  family_name: string
-  side: string
-  relation_tier: string
-  relationship: string | null
-  expected_adults_count: number | null
-  expected_kids_count: number | null
-  is_local: boolean
-  city: string | null
-  contact_person: string | null
-  contact_phone: string | null
-  family_members: FamilyMember[]
-}
+import GuestListManager, { familyCount } from '@/components/GuestListManager'
+import type { GuestFamily } from '@/components/FamilyPanel'
 
 export default async function GuestsPage() {
   const supabase = await createClient()
@@ -95,158 +70,64 @@ export default async function GuestsPage() {
     if (r.family_id) (shagunByFamily[r.family_id] ||= []).push(r)
   })
 
-  // Group by side
-  const ladkewale = (families || []).filter(f => f.side === 'groom')
-  const ladkiwale = (families || []).filter(f => f.side === 'bride')
-
-  const canEditGroom = role === 'admin' || role === 'planner'
-  const canEditBride = role === 'admin' || role === 'planner'
-
-  // Live Guest Stats Calculation
-  const allFamilies = families || []
-  // Include all families for stats
-  const guestsFamilies = allFamilies
-  const totalExpectedAdults = guestsFamilies.reduce((sum, f) => sum + (f.expected_adults_count || 1), 0)
-  const totalExpectedKids = guestsFamilies.reduce((sum, f) => sum + (f.expected_kids_count || 0), 0)
-  const totalExpected = totalExpectedAdults + totalExpectedKids
-  const totalFamiliesCount = guestsFamilies.length
-  
-  const totalAdded = 0
-  const closeFamilyCount = 0    // tier_2 expected total
-  const extendedFamilyCount = 0 // tier_3 expected total
-  
-  let estimatedAdultsCount = 0
-  let estimatedKidsCount = 0
-  let seniorsCount = 0
-  
-  let outstationFamiliesCount = 0
-  let outstationExpectedCount = 0
-  let outstationAdultsCount = 0
-  let outstationKidsCount = 0
-  let outstationSeniorsCount = 0
-
-  allFamilies.forEach(f => {
-    // Count added members for all families
-    {
-      const addedMembersCount = f.family_members?.length || 0
-      
-      let localAdults = 0
-      let localKids = 0
-      let localSeniors = 0
-
-      if (addedMembersCount > 0) {
-        f.family_members?.forEach((m: FamilyMember) => {
-          if (m.age !== null) {
-            if (m.age < 12) {
-              localKids++
-            } else if (m.age >= 60) {
-              localSeniors++
-            } else {
-              localAdults++
-            }
-          } else {
-            localAdults++
-          }
-        })
-      }
-      
-      // Calculate remaining expected members
-      const expectedAdults = f.expected_adults_count || 1
-      const expectedKids = f.expected_kids_count || 0
-      
-      const remainingExpectedKids = Math.max(0, expectedKids - localKids)
-      // Seniors count against the adult quota
-      const remainingExpectedAdults = Math.max(0, expectedAdults - localAdults - localSeniors)
-
-      localAdults += remainingExpectedAdults
-      localKids += remainingExpectedKids
-
-      estimatedAdultsCount += localAdults
-      estimatedKidsCount += localKids
-      seniorsCount += localSeniors
-
-      if (!f.is_local) {
-        outstationFamiliesCount++
-        outstationExpectedCount += (localAdults + localKids + localSeniors)
-        outstationAdultsCount += localAdults
-        outstationKidsCount += localKids
-        outstationSeniorsCount += localSeniors
-      }
-    }
-  })
+  const allFamilies = (families || []) as GuestFamily[]
+  // Same counting as the list and the function pages: named members padded up to expected counts
+  const sum = (list: GuestFamily[]) =>
+    list.reduce(
+      (acc, f) => {
+        const c = familyCount(f)
+        return { guests: acc.guests + c.total, adults: acc.adults + c.adults, kids: acc.kids + c.kids, seniors: acc.seniors + c.seniors, outstation: acc.outstation + (f.is_local ? 0 : c.total), families: acc.families + 1 }
+      },
+      { guests: 0, adults: 0, kids: 0, seniors: 0, outstation: 0, families: 0 }
+    )
+  const all = sum(allFamilies)
+  const groom = sum(allFamilies.filter(f => f.side === 'groom'))
+  const bride = sum(allFamilies.filter(f => f.side === 'bride'))
+  const named = allFamilies.reduce((s, f) => s + (f.family_members?.length || 0), 0)
 
   return (
-    <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">
-      <header className="flex items-center space-x-4 py-4 border-b border-marigold/30 mb-6">
-        <Link href="/">
-          <Button variant="ghost" size="icon" className="text-maroon/70 hover:text-maroon hover:bg-marigold/10">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-display font-semibold text-maroon">Guest List</h1>
-          {(role === 'admin' || role === 'planner') && <span className="text-xs bg-maroon text-ivory px-2 py-0.5 rounded-full font-data">{role === 'admin' ? 'Admin' : 'Planner'}</span>}
+    <main className="min-h-screen bg-ivory">
+      <header className="bg-gradient-to-br from-[#3A0B20] to-maroon text-white">
+        <div className="mx-auto max-w-3xl px-4 pt-4 pb-6">
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/" aria-label="Back to home" className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <Link href="/guests/analytics" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold hover:bg-white/20">
+              📊 Analytics
+            </Link>
+          </div>
+          <h1 className="mt-4 font-display text-4xl font-bold text-[#F2C46D] sm:text-5xl">Guest list</h1>
+          <p className="mt-1 font-data text-[13px] text-white/80">
+            {all.families} families · {named} of {all.guests} guests named
+          </p>
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <p className="font-display text-2xl font-bold leading-none">{all.guests}</p>
+              <p className="mt-1 font-data text-[10px] uppercase tracking-wide text-white/70">expected</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <p className="font-data text-sm font-bold leading-tight">🤵‍♂️ {groom.guests} <span className="font-normal text-white/60">·</span> 👰‍♀️ {bride.guests}</p>
+              <p className="mt-1 font-data text-[10px] uppercase tracking-wide text-white/70">by side</p>
+            </div>
+            <div className="rounded-xl bg-white/10 px-3 py-2.5">
+              <p className="font-data text-sm font-bold leading-tight">✈️ {all.outstation}</p>
+              <p className="mt-1 font-data text-[10px] uppercase tracking-wide text-white/70">outstation</p>
+            </div>
+          </div>
+          <p className="mt-3 font-data text-[11px] text-white/70">🧑 {all.adults} adults · 🧸 {all.kids} kids · 👵 {all.seniors} seniors</p>
         </div>
       </header>
 
-      {/* Stats Dashboard Banner */}
-      <section className="flex flex-col gap-6 mb-8 w-full">
-        {/* Row 1: Key Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-start">
-          {/* Card 1: Total Headcount */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Expected Headcount</span>
-            <span className="text-3xl font-display font-bold text-maroon">{totalExpected}</span>
-            <span className="text-xs text-maroon/60 font-data mt-1">{totalExpectedAdults} Adults, {totalExpectedKids} Kids</span>
-          </div>
-          
-          {/* Card 2: Demographics */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Demographics</span>
-            <div className="flex gap-3 text-sm font-data font-medium text-maroon mt-1">
-              <span className="flex flex-col items-center">🧑 <span className="text-lg font-bold">{estimatedAdultsCount}</span></span>
-              <span className="flex flex-col items-center">🧸 <span className="text-lg font-bold">{estimatedKidsCount}</span></span>
-              <span className="flex flex-col items-center">👵 <span className="text-lg font-bold">{seniorsCount}</span></span>
-            </div>
-            <span className="text-[9px] text-maroon/40 font-data mt-1.5">*auto-updates</span>
-          </div>
-
-          {/* Card 3: Total Families */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Families Invited</span>
-            <span className="text-3xl font-display font-bold text-maroon">{totalFamiliesCount}</span>
-            <span className="text-xs text-maroon/60 font-data mt-1">Cards Needed</span>
-          </div>
-
-          {/* Card 4: Outstation */}
-          <div className="bg-white/80 backdrop-blur-sm border border-marigold/25 rounded-2xl p-4 shadow-sm flex flex-col justify-center items-center text-center">
-            <span className="text-[10px] text-maroon/60 uppercase tracking-wider font-semibold font-data mb-1">Outstation Guests</span>
-            <span className="text-3xl font-display font-bold text-maroon">{outstationExpectedCount}</span>
-            <span className="text-[10px] text-maroon/60 font-data mt-0.5 mb-1.5 font-semibold">{outstationFamiliesCount} Families</span>
-            <div className="flex flex-wrap justify-center gap-1.5">
-              {outstationAdultsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">🧑 {outstationAdultsCount}</span>}
-              {outstationKidsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">🧸 {outstationKidsCount}</span>}
-              {outstationSeniorsCount > 0 && <span className="bg-ivory text-maroon border border-marigold/40 px-2 py-0.5 rounded-full text-[11px] font-bold shadow-sm flex items-center gap-1">👵 {outstationSeniorsCount}</span>}
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex justify-center mt-2">
-          <Link href="/guests/analytics">
-            <Button variant="outline" className="border-marigold/40 text-maroon hover:bg-marigold/10 rounded-full text-sm font-semibold px-6 shadow-sm">
-              View Detailed Analytics 📊
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      <GuestListManager
-        initialFamilies={families as Family[] || []}
-        role={role}
-        userSide={userSide}
-        shagunByFamily={shagunByFamily}
-        couple={weddingSettings || {}}
-      />
+      <div className="mx-auto max-w-3xl px-4 pt-5">
+        <GuestListManager
+          initialFamilies={allFamilies}
+          role={role}
+          userSide={userSide}
+          shagunByFamily={shagunByFamily}
+          couple={weddingSettings || {}}
+        />
+      </div>
     </main>
   )
 }

@@ -546,18 +546,19 @@ export default async function FunctionDetailPage({
     </div>
   )
 
-  // ---- Budget: allocated vs spent ------------------------------------------
+  // ---- Budget: where the money stands --------------------------------------
+  // Spent + still to spend (allocated, not yet spent) + not allocated = the budget.
+  // Spending counts against the allocation whether or not it was tagged to an item.
   const subItems = ((linkedSubItems || []) as { id: string; name: string; target_budget: number | null; is_auto?: boolean }[])
   const expenseRows = (expenses || []) as { amount: number | null; status: string | null; sub_item_id: string | null }[]
-  const paidTotal = expenseRows.filter(e => String(e.status) !== 'due').reduce((s, e) => s + (Number(e.amount) || 0), 0)
-  const dueTotal = totalSpent - paidTotal
+  const dueTotal = expenseRows.filter(e => String(e.status) === 'due').reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  const paidTotal = totalSpent - dueTotal
   const allocated = subItemsPlannedTotal
+  const stillToSpend = Math.max(0, allocated - totalSpent)
+  const notAllocated = Math.max(0, maxBudget - totalSpent - stillToSpend)
   const spentByItem = new Map<string, number>()
   expenseRows.forEach(e => { if (e.sub_item_id) spentByItem.set(e.sub_item_id, (spentByItem.get(e.sub_item_id) || 0) + (Number(e.amount) || 0)) })
-  const unlinkedSpent = expenseRows.filter(e => !e.sub_item_id || !subItems.some(i => i.id === e.sub_item_id)).reduce((s, e) => s + (Number(e.amount) || 0), 0)
-  // Allocated money not spent yet (per item, so overspending one item doesn't hide another's balance)
-  const stillToSpend = subItems.reduce((s, i) => s + Math.max(0, (Number(i.target_budget) || 0) - (spentByItem.get(i.id) || 0)), 0)
-  const notAllocated = Math.max(0, maxBudget - allocated)
+  const untaggedSpent = expenseRows.filter(e => !e.sub_item_id || !subItems.some(i => i.id === e.sub_item_id)).reduce((s, e) => s + (Number(e.amount) || 0), 0)
   const barBase = Math.max(maxBudget, allocated, totalSpent, 1)
   const pctOf = (n: number) => `${Math.max(0, Math.min(100, (n / barBase) * 100))}%`
 
@@ -575,87 +576,95 @@ export default async function FunctionDetailPage({
         </div>
       </div>
 
-      <div className="flex items-end justify-between gap-4 mb-3">
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <p className="text-[10px] uppercase tracking-wide font-data text-maroon/50">Budget</p>
-          <p className="text-3xl font-display font-bold text-maroon">{maxBudget > 0 ? rupees(maxBudget) : 'Not set'}</p>
+          <p className="text-[10px] uppercase tracking-wider font-bold font-data text-maroon/50">Spent</p>
+          <p className="font-sans text-3xl font-extrabold tracking-tight text-maroon">{rupees(totalSpent)}</p>
+          {dueTotal > 0 && <p className="font-data text-[11px] text-maroon/60">{rupees(paidTotal)} paid · <span className="font-semibold text-maroon">{rupees(dueTotal)} due</span></p>}
         </div>
-        <p className={`text-right text-xs font-data ${overbudget ? 'text-rust-red font-semibold' : 'text-maroon/60'}`}>
-          {maxBudget <= 0 ? 'Set a limit in Budget Setup' : overbudget ? `⚠️ Over by ${rupees(totalSpent - maxBudget)}` : `${rupees(maxBudget - totalSpent)} left to spend`}
-        </p>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider font-bold font-data text-maroon/50">Budget</p>
+          <p className="font-sans text-lg font-bold text-maroon">{maxBudget > 0 ? rupees(maxBudget) : 'Not set'}</p>
+          <p className={`font-data text-[11px] ${overbudget ? 'font-bold text-rust-red' : 'text-mehendi font-semibold'}`}>
+            {maxBudget <= 0 ? '' : overbudget ? `Over by ${rupees(totalSpent - maxBudget)}` : `${rupees(maxBudget - totalSpent)} left`}
+          </p>
+        </div>
       </div>
 
-      {/* Paid | due | allocated but not spent | not allocated */}
-      <div className="relative mb-2 flex h-3 w-full overflow-hidden rounded-full bg-ivory ring-1 ring-marigold/20" aria-hidden="true">
+      {/* Paid | due | still to spend | not allocated, adding up to the budget */}
+      <div className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-ivory ring-1 ring-marigold/25" aria-hidden="true">
         <span className="h-full bg-mehendi" style={{ width: pctOf(paidTotal) }} />
         <span className="h-full bg-marigold" style={{ width: pctOf(dueTotal) }} />
-        <span className="h-full bg-marigold/30" style={{ width: pctOf(stillToSpend) }} />
-      </div>
-      <div className="mb-5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-data text-maroon/60">
-        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-mehendi" />Paid</span>
-        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-marigold" />Due</span>
-        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-marigold/30" />Allocated, not spent</span>
-        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-ivory ring-1 ring-marigold/30" />Not allocated</span>
+        <span className="h-full bg-maroon/25" style={{ width: pctOf(stillToSpend) }} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-5 sm:grid-cols-4">
-        {[
-          { label: 'Allocated', value: rupees(allocated), sub: subItems.length ? `${subItems.length} item${subItems.length === 1 ? '' : 's'}` : 'nothing yet' },
-          { label: 'Spent', value: rupees(totalSpent), sub: dueTotal > 0 ? `${rupees(paidTotal)} paid · ${rupees(dueTotal)} due` : 'all paid' },
-          { label: 'Still to spend', value: rupees(stillToSpend), sub: 'of what is allocated' },
-          { label: 'Not allocated', value: rupees(notAllocated), sub: maxBudget > 0 ? 'free in the budget' : 'no limit set', warn: subItemsOverAllocated }
-        ].map(t => (
-          <div key={t.label} className={`rounded-xl border p-2.5 ${t.warn ? 'border-amber-500/40 bg-amber-500/10' : 'border-marigold/20 bg-ivory/60'}`}>
-            <p className="text-[10px] uppercase tracking-wide font-data text-maroon/50">{t.label}</p>
-            <p className="font-data text-base font-bold text-maroon">{t.value}</p>
-            <p className="text-[10px] font-data text-maroon/55">{t.sub}</p>
-          </div>
-        ))}
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-ivory/60 p-3 font-data text-xs sm:grid-cols-4">
+        <div><p className="flex items-center gap-1.5 text-maroon/60"><span className="h-2 w-2 rounded-full bg-mehendi" />Paid</p><p className="font-bold text-maroon">{rupees(paidTotal)}</p></div>
+        <div><p className="flex items-center gap-1.5 text-maroon/60"><span className="h-2 w-2 rounded-full bg-marigold" />Due</p><p className="font-bold text-maroon">{rupees(dueTotal)}</p></div>
+        <div><p className="flex items-center gap-1.5 text-maroon/60"><span className="h-2 w-2 rounded-full bg-maroon/25" />Still to spend</p><p className="font-bold text-maroon">{rupees(stillToSpend)}</p></div>
+        <div><p className="flex items-center gap-1.5 text-maroon/60"><span className="h-2 w-2 rounded-full bg-white ring-1 ring-marigold/40" />Not allocated</p><p className={`font-bold ${subItemsOverAllocated ? 'text-rust-red' : 'text-maroon'}`}>{rupees(notAllocated)}</p></div>
       </div>
+      {maxBudget > 0 && (
+        <p className="mt-2 font-data text-[11px] text-maroon/55">
+          {rupees(totalSpent)} spent + {rupees(stillToSpend)} still to spend of the {rupees(allocated)} allocated + {rupees(notAllocated)} not allocated = {rupees(maxBudget)}
+        </p>
+      )}
 
       {subItemsOverAllocated && (
-        <p role="alert" className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 font-data text-xs text-amber-900">
+        <p role="alert" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 font-data text-xs text-amber-900">
           ⚠️ <span className="font-bold">Sub-budgets exceed the limit:</span> itemized sub-items total {rupees(subItemsPlannedTotal)}, which is {rupees(subItemsOverAllocatedAmount)} more than this function&apos;s budget ({rupees(maxBudget)}).
         </p>
       )}
 
       {subItems.length > 0 && (
-        <div className="mb-5">
-          <h3 className="mb-2 font-data text-[10px] font-bold uppercase tracking-widest text-maroon/50">By item</h3>
-          <ul className="space-y-2.5">
-            {[...subItems]
-              .sort((a, b) => (Number(b.target_budget) || 0) - (Number(a.target_budget) || 0))
-              .map(item => {
-                const target = Number(item.target_budget) || 0
-                const spent = spentByItem.get(item.id) || 0
-                const over = target > 0 && spent > target
-                return (
-                  <li key={item.id} className="font-data text-xs">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="min-w-0 truncate font-semibold text-maroon">{item.name}{item.is_auto && <span className="ml-1 font-normal text-maroon/45">· auto</span>}</span>
-                      <span className={`shrink-0 ${over ? 'font-semibold text-rust-red' : 'text-maroon/70'}`}>
-                        {rupees(spent)} <span className="text-maroon/45">of {rupees(target)}</span>
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-marigold/15">
-                      <div className={`h-full rounded-full ${over ? 'bg-rust-red' : 'bg-mehendi'}`} style={{ width: `${target > 0 ? Math.min(100, (spent / target) * 100) : spent > 0 ? 100 : 0}%` }} />
-                    </div>
-                    <p className={`mt-0.5 text-[10px] ${over ? 'text-rust-red' : 'text-maroon/50'}`}>
-                      {over ? `Over by ${rupees(spent - target)}` : target > 0 ? `${rupees(target - spent)} still to spend` : 'No amount allocated'}
-                    </p>
-                  </li>
-                )
-              })}
-            {unlinkedSpent > 0 && (
-              <li className="flex justify-between gap-3 font-data text-xs text-maroon/60">
-                <span>Spending not tied to an item</span><span>{rupees(unlinkedSpent)}</span>
-              </li>
-            )}
-          </ul>
+        <div className="mt-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[10px] uppercase font-bold tracking-wider text-maroon/50 font-data">📊 Itemized sub-budgets</h3>
+            <span className={`text-[10px] font-data font-semibold ${subItemsOverAllocated ? 'text-rust-red' : 'text-maroon/60'}`}>Total: {rupees(allocated)} of {rupees(maxBudget)}</span>
+          </div>
+          {[...subItems]
+            .sort((a, b) => (Number(b.target_budget) || 0) - (Number(a.target_budget) || 0))
+            .map(item => {
+              const target = Number(item.target_budget) || 0
+              const spent = spentByItem.get(item.id) || 0
+              const pct = target > 0 ? (spent / target) * 100 : spent > 0 ? 100 : 0
+              const over = target > 0 && spent > target
+              const near = !over && target > 0 && spent >= target * 0.9
+              return (
+                <div key={item.id} className="space-y-1.5 border-l-2 border-marigold/30 pl-3">
+                  <div className="flex items-center justify-between gap-2 font-data text-xs">
+                    <span className="min-w-0 truncate font-bold text-maroon/80">
+                      {item.name}
+                      {item.is_auto && <span className="ml-1.5 rounded-full bg-mehendi/10 px-1.5 py-0.5 text-[9px] font-normal text-mehendi">auto</span>}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="font-sans font-bold text-maroon">{rupees(spent)}</span>
+                      <span className="text-[10px] text-maroon/50">of {rupees(target)}</span>
+                      {over && <span className="rounded-full bg-rust-red/10 px-1.5 py-0.5 text-[8px] font-bold text-rust-red">🚨 Over</span>}
+                      {near && <span className="rounded-full bg-marigold/10 px-1.5 py-0.5 text-[8px] font-bold text-maroon">⚠️</span>}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-marigold/15">
+                    <div className={`h-full rounded-full ${over ? 'bg-rust-red' : near ? 'bg-marigold' : 'bg-maroon/70'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                  </div>
+                </div>
+              )
+            })}
+          {untaggedSpent > 0 && (
+            <div className="space-y-1 border-l-2 border-dashed border-maroon/20 pl-3">
+              <div className="flex items-center justify-between gap-2 font-data text-xs">
+                <span className="font-bold text-maroon/70">Not tagged to an item</span>
+                <span className="font-sans font-bold text-maroon">{rupees(untaggedSpent)}</span>
+              </div>
+              <p className="font-data text-[10px] text-maroon/50">
+                These expenses count against the budget above, but not against an item. Pick an item when logging or editing them to see each item&apos;s progress.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
-      <dl className="space-y-2 text-xs font-data border-t border-marigold/10 pt-4">
+      <dl className="mt-5 space-y-2 text-xs font-data border-t border-marigold/10 pt-4">
         <div className="flex justify-between gap-4">
           <dt className="text-maroon/60">Where the limit comes from</dt>
           <dd className="text-right text-maroon">{budgetFromCategory ? `Budget Setup (${(budgetCats || []).map(c => c.name).join(', ')})` : 'Set on this function'}</dd>
@@ -667,6 +676,11 @@ export default async function FunctionDetailPage({
           <div className="flex justify-between gap-4"><dt className="text-maroon/60">Planned ritual items</dt><dd className="text-maroon">{rupees(ritualTotal)}</dd></div>
         )}
       </dl>
+      {budgetFromCategory && (
+        <Link href={`/budget?tab=expenses&category=${(budgetCats || [])[0]?.id}`} className="mt-3 block text-center font-data text-xs font-bold text-maroon underline decoration-marigold/50 underline-offset-4">
+          See these expenses in Budget →
+        </Link>
+      )}
     </section>
   )
 
