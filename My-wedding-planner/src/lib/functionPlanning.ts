@@ -51,6 +51,10 @@ export type Headcount = {
   kids: number
   /** Subset of kids: named kids under the function's small-kid age */
   smallKids: number
+  /** For gifting: adults minus grown-ups marked to get a kid's lifafa */
+  giftAdults: number
+  /** For gifting: kids plus those grown-ups */
+  giftKids: number
   males: number
   females: number
   total: number
@@ -64,17 +68,33 @@ export type Headcount = {
 
 export type AgeGroup = 'kid' | 'adult' | 'senior'
 
-export function classifyMember(member: PlanningMember, kidAge = DEFAULT_KID_AGE): AgeGroup {
-  if (member.is_kid_for_gifting) return 'kid'
-  if (member.age === null || member.age === undefined) return 'adult'
+/**
+ * Who someone is as a guest (headcount, rooms, catering): by age. Without an age, the
+ * Kid switch decides (that is how imported kids get marked).
+ */
+export function ageGroup(member: PlanningMember, kidAge = DEFAULT_KID_AGE): AgeGroup {
+  if (member.age === null || member.age === undefined) return member.is_kid_for_gifting ? 'kid' : 'adult'
   if (member.age < kidAge) return 'kid'
   if (member.age >= SENIOR_AGE) return 'senior'
   return 'adult'
 }
 
+/**
+ * Who someone is for gifting: like ageGroup, but the Kid switch always makes them a kid,
+ * so a grown-up son or daughter (say 24) stays an adult guest yet gets a kid's lifafa.
+ */
+export function classifyMember(member: PlanningMember, kidAge = DEFAULT_KID_AGE): AgeGroup {
+  if (member.is_kid_for_gifting) return 'kid'
+  return ageGroup(member, kidAge)
+}
+
+/** An adult guest (by age) who gets a kid's lifafa. */
+export const isGiftKidAdult = (member: PlanningMember, kidAge = DEFAULT_KID_AGE) =>
+  !!member.is_kid_for_gifting && ageGroup(member, kidAge) !== 'kid'
+
 const EMPTY: Headcount = {
   adults: 0, seniors: 0, kids: 0, males: 0, females: 0, total: 0,
-  smallKids: 0, autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false, rsvp: 'invited'
+  smallKids: 0, giftAdults: 0, giftKids: 0, autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false, rsvp: 'invited'
 }
 
 /**
@@ -104,10 +124,12 @@ export function familyHeadcount(
   let namedSeniors = 0
   let namedKids = 0
   let namedSmallKids = 0
+  let namedGiftKidAdults = 0
   let males = 0
   let females = 0
   invitedMembers.forEach(m => {
-    const group = classifyMember(m, kidAge)
+    const group = ageGroup(m, kidAge)
+    if (isGiftKidAdult(m, kidAge)) namedGiftKidAdults++
     if (group === 'kid') {
       namedKids++
       if (m.age !== null && m.age !== undefined && m.age < smallKidAge) namedSmallKids++
@@ -141,6 +163,8 @@ export function familyHeadcount(
     kids,
     // Kids without an age (or counted but not named) are treated as older kids
     smallKids: Math.min(namedSmallKids, kids),
+    giftAdults: Math.max(0, adults - Math.min(namedGiftKidAdults, adults)),
+    giftKids: kids + Math.min(namedGiftKidAdults, adults),
     males: Math.min(males, total),
     females: Math.min(females, total),
     total,
@@ -189,6 +213,8 @@ export function functionHeadcount(
     result.seniors += hc.seniors
     result.kids += hc.kids
     result.smallKids += hc.smallKids
+    result.giftAdults += hc.giftAdults
+    result.giftKids += hc.giftKids
     result.males += hc.males
     result.females += hc.females
     result.total += hc.total
@@ -293,10 +319,10 @@ function recipientsInFamily(rule: GiftingRule, hc: Headcount) {
   if (rule.distribution === 'per_family') return 1
   switch (rule.target_gender) {
     case 'All': return hc.total
-    case 'Adults': return hc.adults
-    case 'Kids': return hc.kids
+    case 'Adults': return hc.giftAdults
+    case 'Kids': return hc.giftKids
     case 'SmallKids': return hc.smallKids
-    case 'OlderKids': return hc.kids - hc.smallKids
+    case 'OlderKids': return hc.giftKids - hc.smallKids
     case 'Seniors': return hc.seniors
     case 'Male': return hc.males
     case 'Female': return hc.females
@@ -362,6 +388,7 @@ export function lifafaBreakdown(
   const AGE_LABEL = { kid: 'Kid', adult: 'Adult', senior: 'Senior' } as const
   const ageLabel = (m: PlanningMember) => {
     const g = classifyMember(m, kidAge)
+    if (isGiftKidAdult(m, kidAge)) return 'Adult · kid’s lifafa'
     return g === 'kid' && m.age !== null && m.age !== undefined && m.age < smallKidAge ? 'Small kid' : AGE_LABEL[g]
   }
 

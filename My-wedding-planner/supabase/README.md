@@ -18,6 +18,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `16_gifts.sql` | gift types (lifafa, bhaji, gift item, return gift), prices per circle and per family, gifts for chosen people, and the Give & track checklist |
 | `17_lifafa_per_person.sql` | family lifafa exceptions set person by person |
 | `18_small_kids.sql` | small kids as a third age group for gifting (e.g. adults ₹1,100, kids ₹500, small kids ₹250) |
+| `19_estimated_guests.sql` | estimated guests not on the guest list, for big functions |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.

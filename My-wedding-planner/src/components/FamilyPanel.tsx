@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { CalendarDays, Check, Minus, Pencil, Phone, Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/client'
-import { classifyMember, DEFAULT_KID_AGE } from '@/lib/functionPlanning'
+import { ageGroup, DEFAULT_KID_AGE } from '@/lib/functionPlanning'
 import KidToggle from './KidToggle'
 import PendingMemberActions from './PendingMemberActions'
 import ShagunHistory, { type FamilyShagun } from './ShagunHistory'
@@ -140,7 +140,7 @@ export default function FamilyPanel({
   const refresh = () => startRefresh(() => router.refresh())
 
   const members = family.family_members || []
-  const groups = members.map(m => classifyMember(m, DEFAULT_KID_AGE))
+  const groups = members.map(m => ageGroup(m, DEFAULT_KID_AGE))
   const namedAdults = groups.filter(g => g !== 'kid').length
   const namedKids = groups.filter(g => g === 'kid').length
   const expectedAdults = family.expected_adults_count ?? 1

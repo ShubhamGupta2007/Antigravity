@@ -50,7 +50,11 @@ export default async function FunctionSheetPage({ params }: { params: Promise<{ 
   const rituals = sortSegments((ritRes.data || []) as Ritual[])
   const rows = (attRes.data || []) as unknown as Array<PlanningAttendance & { families: PlanningFamily }>
   const families = familiesFromAttendance(rows)
-  const hc = functionHeadcount(families, rows, func.kid_age_threshold || DEFAULT_KID_AGE)
+  const listed = functionHeadcount(families, rows, func.kid_age_threshold || DEFAULT_KID_AGE)
+  // Plus guests not on the list (19_estimated_guests.sql)
+  const extraAdults = Number(func.estimated_adults) || 0
+  const extraKids = Number(func.estimated_kids) || 0
+  const hc = { ...listed, adults: listed.adults + extraAdults, kids: listed.kids + extraKids, total: listed.total + extraAdults + extraKids }
   const date = func.event_date ? format(parseEventDate(func.event_date), 'EEEE, d MMMM yyyy') : ''
 
   const shareText = [
@@ -80,7 +84,7 @@ export default async function FunctionSheetPage({ params }: { params: Promise<{ 
         <p className="text-sm font-data mt-1">{date} • {range(func.start_time, func.end_time)}</p>
         {func.location && <p className="text-sm font-data text-maroon/70">📍 {func.location}</p>}
         <p className="text-sm font-data mt-2">
-          <strong>{hc.total}</strong> guests expected ({hc.adults} adults{hc.kids ? `, ${hc.kids} kids` : ''}) from {hc.families} families
+          <strong>{hc.total}</strong> guests expected ({hc.adults} adults{hc.kids ? `, ${hc.kids} kids` : ''}) from {hc.families} families{extraAdults + extraKids ? ` + ${extraAdults + extraKids} not on the list` : ''}
           {hc.confirmedTotal > 0 && <> • <strong>{hc.confirmedTotal}</strong> confirmed</>}
         </p>
       </header>

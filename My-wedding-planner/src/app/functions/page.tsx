@@ -72,9 +72,10 @@ export default async function FunctionsPage() {
         end_time: f.end_time,
         location: f.location,
         hosting_side: f.hosting_side,
-        adults: hc.adults,
-        kids: hc.kids,
-        total: hc.total,
+        // Plus guests not on the list (19_estimated_guests.sql)
+        adults: hc.adults + (Number(f.estimated_adults) || 0),
+        kids: hc.kids + (Number(f.estimated_kids) || 0),
+        total: hc.total + (Number(f.estimated_adults) || 0) + (Number(f.estimated_kids) || 0),
         families: hc.families,
         confirmed: hc.confirmedTotal,
         plannedGifting: Math.round((Number(f.planned_lifafa_total) || 0) + (Number(f.planned_return_gift_total) || 0)),

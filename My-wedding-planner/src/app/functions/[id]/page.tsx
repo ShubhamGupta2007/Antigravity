@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronRight } from 'lucide-react'
 import { differenceInCalendarDays, format } from 'date-fns'
 import DeleteFunctionButton from './DeleteFunctionButton'
 import FunctionGiftingRules from './FunctionGiftingRules'
+import FunctionExtraGuests from './FunctionExtraGuests'
 import FunctionGiftHandover, { type HandoverRow } from './FunctionGiftHandover'
 import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
@@ -186,13 +187,18 @@ export default async function FunctionDetailPage({
   const attendingMembers = (attendance || []).filter(a => a.member_id !== null)
   const attendingFamilyIds = Array.from(new Set((attendance || []).map(a => a.family_id)))
 
-  const estimatedAdults = headcount.adults - headcount.seniors
+  // Guests not on the list (big functions); needs 19_estimated_guests.sql
+  const extraReady = 'estimated_adults' in func
+  const extraAdults = Number(func.estimated_adults) || 0
+  const extraKids = Number(func.estimated_kids) || 0
+  const listedTotal = headcount.total
+  const estimatedAdults = headcount.adults - headcount.seniors + extraAdults
   const estimatedSeniors = headcount.seniors
-  const estimatedKids = headcount.kids
+  const estimatedKids = headcount.kids + extraKids
   const estimatedMales = headcount.males
   const estimatedFemales = headcount.females
   const outstationCount = headcount.outstation
-  const estimatedTotal = headcount.total
+  const estimatedTotal = headcount.total + extraAdults + extraKids
 
   const inviteInfo = new Map(((inviteInfoRes.data || []) as { id: string; invite_code: string | null; contact_phone: string | null }[]).map(r => [r.id, r]))
   const replyFamilies: ReplyFamily[] = planningFamilies.map(f => {
@@ -367,7 +373,9 @@ export default async function FunctionDetailPage({
     {
       key: 'guests', icon: '👥', title: 'Guests',
       value: String(estimatedTotal),
-      sub: attendingFamilyIds.length === 0 ? 'No one invited yet' : `${attendingFamilyIds.length} families · ${headcount.confirmedFamilies} confirmed`,
+      sub: attendingFamilyIds.length === 0 && !(extraAdults + extraKids)
+        ? 'No one invited yet'
+        : `${attendingFamilyIds.length} families${extraAdults + extraKids ? ` + ${extraAdults + extraKids} estimated` : ` · ${headcount.confirmedFamilies} confirmed`}`,
       flag: missingRequired.length > 0 ? { text: `${missingRequired.length} missing`, tone: 'bad' } : undefined
     },
     {
@@ -472,6 +480,7 @@ export default async function FunctionDetailPage({
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
               {[
                 { label: 'Expected', value: estimatedTotal, strong: true },
+                { label: 'Not on list', value: extraAdults + extraKids },
                 { label: 'Adults', value: estimatedAdults },
                 { label: 'Kids', value: estimatedKids },
                 { label: 'Seniors', value: estimatedSeniors },
@@ -524,6 +533,14 @@ export default async function FunctionDetailPage({
           </div>
         )}
       </section>
+
+      {extraReady ? (
+        <FunctionExtraGuests functionId={func.id} initialAdults={extraAdults} initialKids={extraKids} listed={listedTotal} canEdit={canEditSchedule} />
+      ) : canEditSchedule ? (
+        <p className="rounded-xl border border-marigold/30 bg-white p-3 font-data text-xs text-maroon/70">
+          Expecting guests who aren&apos;t on the list? Run <b>supabase/19_estimated_guests.sql</b> to add an estimate for this function.
+        </p>
+      ) : null}
 
       {requiredValidationList.length > 0 && (
         <section className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 sm:p-6">
