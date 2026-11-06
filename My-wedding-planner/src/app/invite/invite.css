@@ -1,0 +1,65 @@
+/* Guest invitation motion. Everything is decorative and switches off with "reduce motion". */
+@keyframes inv-spin { to { transform: rotate(360deg) } }
+@keyframes inv-spin-back { to { transform: rotate(-360deg) } }
+@keyframes inv-fall {
+  0% { transform: translate3d(0, -60px, 0) rotate(0deg); opacity: 0 }
+  10% { opacity: 1 }
+  100% { transform: translate3d(40px, 110vh, 0) rotate(540deg); opacity: 0.9 }
+}
+@keyframes inv-shine { to { background-position: 200% center } }
+@keyframes inv-rise { from { opacity: 0; transform: translateY(28px) } to { opacity: 1; transform: none } }
+@keyframes inv-reveal { from { opacity: 0.001; transform: translateY(28px) } to { opacity: 1; transform: none } }
+@keyframes inv-cue { 0%, 100% { transform: translateY(0); opacity: .6 } 50% { transform: translateY(8px); opacity: 1 } }
+@keyframes inv-sway { 0%, 100% { transform: rotate(-2deg) } 50% { transform: rotate(2deg) } }
+@keyframes inv-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 196, 109, .55), inset 0 0 0 4px #A8303F }
+  50% { box-shadow: 0 0 0 18px rgba(242, 196, 109, 0), inset 0 0 0 4px #A8303F }
+}
+@keyframes inv-float { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+@keyframes inv-pop { 0% { transform: scale(.6); opacity: 0 } 70% { transform: scale(1.08) } 100% { transform: scale(1); opacity: 1 } }
+@keyframes inv-burst { 0% { transform: translate(0, 0) scale(1); opacity: 1 } 100% { transform: translate(var(--dx), var(--dy)) scale(.4); opacity: 0 } }
+@keyframes inv-unfold { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+
+.inv-mandala { animation: inv-spin 100s linear infinite }
+.inv-mandala-back { animation: inv-spin-back 160s linear infinite }
+.inv-petal { position: absolute; top: 0; width: 14px; height: 10px; border-radius: 70% 0 70% 0; animation: inv-fall linear infinite }
+.inv-gold {
+  background: linear-gradient(100deg, #C9973F 0%, #FFE6A8 25%, #D9A441 50%, #FFE6A8 75%, #C9973F 100%);
+  background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: inv-shine 5s linear infinite;
+}
+.inv-rise { opacity: 0; animation: inv-rise 1s cubic-bezier(.2, .7, .2, 1) forwards }
+.inv-cue { animation: inv-cue 1.8s ease-in-out infinite }
+.inv-toran { transform-origin: 50% 0; animation: inv-sway 4s ease-in-out infinite }
+.inv-seal { animation: inv-glow 2.4s ease-in-out infinite }
+.inv-float { animation: inv-float 5s ease-in-out infinite }
+.inv-flap { transform-origin: 50% 0; transition: transform .9s cubic-bezier(.6, 0, .2, 1) }
+.inv-letter { transition: transform 1s cubic-bezier(.2, .8, .2, 1) .45s }
+/* The card slides up out of the opened envelope, then comes forward in front of it */
+@keyframes inv-pull {
+  0% { transform: none; z-index: 2 }
+  45% { transform: translateY(-175px); z-index: 2 }
+  46% { transform: translateY(-175px); z-index: 6 }
+  100% { transform: translateY(-62px) scale(1.04); z-index: 6 }
+}
+.inv-pull { animation: inv-pull 1.5s cubic-bezier(.3, .7, .2, 1) .35s both }
+.inv-fade { transition: opacity .6s ease 1.1s }
+.inv-pop { animation: inv-pop .6s cubic-bezier(.2, .8, .2, 1) both }
+.inv-spark { position: absolute; left: 50%; top: 50%; width: 10px; height: 7px; border-radius: 70% 0 70% 0; animation: inv-burst 1.1s ease-out forwards }
+.inv-unfold { animation: inv-unfold .35s ease-out both }
+.inv-chip { transition: background-color .2s ease, color .2s ease, border-color .2s ease, transform .15s ease }
+.inv-chip:active { transform: scale(.95) }
+.inv-envelope-out { transition: opacity .7s ease, visibility .7s ease }
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .inv-reveal { animation: inv-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 90% }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inv-mandala, .inv-mandala-back, .inv-petal, .inv-gold, .inv-cue, .inv-toran, .inv-seal, .inv-float, .inv-spark, .inv-unfold { animation: none }
+  .inv-rise, .inv-pop { animation: none; opacity: 1 }
+  .inv-pull { animation: none; transform: translateY(-62px); z-index: 6 }
+  .inv-flap, .inv-letter, .inv-fade, .inv-chip, .inv-envelope-out { transition: none }
+}

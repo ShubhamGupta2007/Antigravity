@@ -215,9 +215,14 @@ begin
            where exists (select 1 from public.function_attendance a where a.function_id = f.id and a.family_id = fam.id)
         ) t
     ), '[]'::jsonb),
+    -- the most recent note and travel details they gave (a later reply may leave them blank)
     'last_response', (
-      select jsonb_build_object('note', r.note, 'travel', r.travel, 'submitted_at', r.submitted_at)
-        from public.invitation_responses r where r.family_id = fam.id order by r.submitted_at desc limit 1)
+      select jsonb_build_object(
+               'note', (select r.note from public.invitation_responses r where r.family_id = fam.id and r.note is not null order by r.submitted_at desc limit 1),
+               'travel', (select r.travel from public.invitation_responses r where r.family_id = fam.id and r.travel is not null order by r.submitted_at desc limit 1),
+               'submitted_at', max(r.submitted_at))
+        from public.invitation_responses r where r.family_id = fam.id
+      having count(*) > 0)
   ) into result;
 
   return result;

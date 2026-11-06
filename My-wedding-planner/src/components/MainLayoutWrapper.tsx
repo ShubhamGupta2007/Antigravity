@@ -5,7 +5,8 @@ import GlobalNavigation from './GlobalNavigation'
 
 export default function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isAuthPage = pathname === '/login'
+  // Login and guest invitations are full-screen, without the planner navigation
+  const isAuthPage = pathname === '/login' || pathname.startsWith('/invite/')
 
   if (isAuthPage) {
     return <>{children}</>
