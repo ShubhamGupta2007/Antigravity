@@ -87,7 +87,7 @@ as $$
 begin
   -- auth.uid() is null for the server secret key (imports, maintenance): allowed.
   if new.side is distinct from old.side and auth.uid() is not null then
-    if not exists (select 1 from public.users where id = auth.uid() and role = 'admin') then
+    if not exists (select 1 from public.users where id = auth.uid() and role::text = 'admin') then
       raise exception 'Only an admin can change which side a family is on';
     end if;
   end if;

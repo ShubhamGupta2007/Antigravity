@@ -18,7 +18,7 @@ as $$
   select exists (
     select 1 from public.users
     where id = auth.uid()
-      and role in ('admin', 'planner', 'bride', 'groom')
+      and role::text in ('admin', 'planner', 'bride', 'groom')
   );
 $$;
 
@@ -147,7 +147,7 @@ create policy "Hosts can write function segments" on public.function_segments
       select 1 from public.functions f
       join public.users u on u.id = auth.uid()
       where f.id = function_segments.function_id
-        and (f.hosting_side = 'joint' or f.hosting_side = u.side)
+        and (f.hosting_side::text = 'joint' or f.hosting_side::text = u.side::text)
     )
   )
   with check (
@@ -155,7 +155,7 @@ create policy "Hosts can write function segments" on public.function_segments
       select 1 from public.functions f
       join public.users u on u.id = auth.uid()
       where f.id = function_segments.function_id
-        and (f.hosting_side = 'joint' or f.hosting_side = u.side)
+        and (f.hosting_side::text = 'joint' or f.hosting_side::text = u.side::text)
     )
   );
 

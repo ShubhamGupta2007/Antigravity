@@ -41,24 +41,26 @@ set search_path = public
 as $$
 declare
   v_side text;
+  v_task_side public.tasks.side%TYPE;
 begin
-  if new.status = 'due' and new.due_date is not null then
+  if new.status::text = 'due' and new.due_date is not null then
     -- Which side pays: the function's hosting side, else whoever logged it, else groom.
     -- (Refined from the expense's split once that is saved; see sync_payment_task_side.)
-    select case when f.hosting_side in ('groom', 'bride') then f.hosting_side end
+    select case when f.hosting_side::text in ('groom', 'bride') then f.hosting_side::text end
       into v_side from public.functions f where f.id = new.function_id;
     if v_side is null then
-      select case when u.side in ('groom', 'bride') then u.side end
+      select case when u.side::text in ('groom', 'bride') then u.side::text end
         into v_side from public.users u where u.id = new.created_by;
     end if;
 
+    v_task_side := coalesce(v_side, 'groom');
     insert into public.tasks (title, description, priority_tier, deadline, side, status, created_by, function_id, expense_id, source)
     values (
       public.payment_task_title(new),
       nullif(trim(coalesce(new.notes, '')), ''),
       'urgent',
       new.due_date,
-      coalesce(v_side, 'groom'),
+      v_task_side,
       'not_started',
       new.created_by,
       new.function_id,
@@ -71,10 +73,10 @@ begin
           deadline = excluded.deadline,
           function_id = excluded.function_id,
           -- a payment that went back to "due" reopens its task
-          status = case when public.tasks.status = 'done' then 'not_started' else public.tasks.status end;
+          status = case when public.tasks.status::text = 'done' then 'not_started' else public.tasks.status end;
   else
     -- Paid (or no longer has a due date): the payment task is done
-    update public.tasks set status = 'done' where expense_id = new.id and status <> 'done';
+    update public.tasks set status = 'done' where expense_id = new.id and status::text <> 'done';
   end if;
   return new;
 end;
@@ -96,11 +98,13 @@ as $$
 declare
   v_sides int;
   v_side text;
+  v_task_side public.tasks.side%TYPE;
 begin
-  select count(distinct side), min(side) into v_sides, v_side
+  select count(distinct side::text), min(side::text) into v_sides, v_side
     from public.expense_splits where expense_id = new.expense_id and coalesce(amount, 0) > 0;
   if v_sides = 1 and v_side in ('groom', 'bride') then
-    update public.tasks set side = v_side where expense_id = new.expense_id and side is distinct from v_side;
+    v_task_side := v_side;
+    update public.tasks set side = v_task_side where expense_id = new.expense_id and side is distinct from v_task_side;
   end if;
   return new;
 end;
@@ -114,6 +118,6 @@ create trigger expense_splits_sync_task_side
 -- Backfill: tasks for payments that are already due (touching the row fires the trigger)
 update public.expenses e
    set due_date = e.due_date
- where e.status = 'due'
+ where e.status::text = 'due'
    and e.due_date is not null
    and not exists (select 1 from public.tasks t where t.expense_id = e.id);

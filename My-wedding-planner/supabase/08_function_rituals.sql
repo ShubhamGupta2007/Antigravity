@@ -46,7 +46,7 @@ as $$
     select 1 from public.functions f
     join public.users u on u.id = auth.uid()
     where f.id = p_function_id
-      and (f.hosting_side = 'joint' or f.hosting_side = u.side)
+      and (f.hosting_side::text = 'joint' or f.hosting_side::text = u.side::text)
   );
 $$;
 
