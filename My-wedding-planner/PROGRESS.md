@@ -67,15 +67,18 @@ We are building a Next.js (App Router) + Supabase application for wedding planni
 ## 🚧 Next Up / Pending Work
 If you are picking up this project, here is exactly what needs to happen next:
 
-0. **Run database scripts 07–13** in the Supabase SQL editor (see `supabase/README.md`), then test `dev`.
+0. **Run database scripts 07–14** in the Supabase SQL editor (see `supabase/README.md`), then test `dev`.
+   - 07 is done on the live database (2026-11-06, after the enum fix in `28324f0`); 08–14 next.
    - Export the current Supabase schema (01–06 were run by hand and are not in the repo) into `supabase/`.
    - Rooms per night (rooms are stored once per family today).
    - Remaining lint: ~50 loose `any` types and unused locals in older pages.
 
-1. **Phase 4 - Tasks Completion**:
-   - Link tasks to functions/budgets as needed.
+1. **Phase 4 - Tasks Completion**: done. Tasks link to functions, and due payments become tasks (13).
 2. **Phase 5+ (Bookings, Gifts, Rooms)**:
    - Begin implementing the `bookings`, `lifafas`/`dabbas` (Gifts), and `rooms` tables per the SQL schema in the build spec.
+
+## 💡 Future ideas (not started)
+- **Wardrobe planner**: outfits per person per function (who wears what, colour coordination with each function's dress code, tailoring/trial dates, status). Reference for the look and catalogue feel: https://weddingwardrobe.store/ (noted by the user on 2026-11-06; nothing built yet).
 
 ## Decisions & Deviations Log
 - (2026-07-11) Switched from Phone OTP to Email Magic Link + Password due to rate limits.
