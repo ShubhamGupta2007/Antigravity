@@ -10,6 +10,8 @@ import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
 import FunctionShagunReceived, { type ShagunEntry } from './FunctionShagunReceived'
 import { TaskList, type Task } from '@/components/TaskList'
+import FunctionGuestDetails from './FunctionGuestDetails'
+import FunctionReplies, { type GuestMessage, type ReplyFamily } from './FunctionReplies'
 import {
   DEFAULT_KID_AGE,
   familiesFromAttendance,
@@ -133,6 +135,21 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
     `)
     .eq('function_id', func.id)
 
+  // Invitation replies: invite codes, phones and guests' messages (needs 14_guest_invitations.sql; skipped without it)
+  const familyIdsForReplies = Array.from(new Set((attendance || []).map(a => a.family_id)))
+  const [inviteInfoRes, messagesRes, coupleRes, respondedRes] = await Promise.all([
+    familyIdsForReplies.length
+      ? supabase.from('families').select('id, invite_code, contact_phone').in('id', familyIdsForReplies)
+      : Promise.resolve({ data: [], error: null }),
+    familyIdsForReplies.length
+      ? supabase.from('invitation_responses').select('family_id, note, travel, submitted_at').in('family_id', familyIdsForReplies).order('submitted_at', { ascending: false }).limit(30)
+      : Promise.resolve({ data: [], error: null }),
+    supabase.from('wedding_settings').select('bride_name, groom_name').eq('id', 1).maybeSingle(),
+    supabase.from('function_attendance').select('family_id, responded_at').eq('function_id', func.id).is('member_id', null)
+  ])
+  const respondedAt = new Map(((respondedRes.data || []) as { family_id: string; responded_at: string | null }[]).map(r => [r.family_id, r.responded_at]))
+  const invitesReady = !inviteInfoRes.error
+
   const attendanceRows = (attendance || []) as unknown as Array<PlanningAttendance & { families: PlanningFamily }>
   const planningFamilies = familiesFromAttendance(attendanceRows)
   const headcount = functionHeadcount(planningFamilies, attendanceRows, kidAge)
@@ -147,6 +164,24 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   const estimatedFemales = headcount.females
   const outstationCount = headcount.outstation
   const estimatedTotal = headcount.total
+
+  const inviteInfo = new Map(((inviteInfoRes.data || []) as { id: string; invite_code: string | null; contact_phone: string | null }[]).map(r => [r.id, r]))
+  const replyFamilies: ReplyFamily[] = planningFamilies.map(f => {
+    const row = attendanceRows.find(a => a.family_id === f.id && a.member_id === null)
+    const hc = headcount.byFamily[f.id]
+    return {
+      id: f.id,
+      name: f.family_name || 'Family',
+      status: (row?.rsvp_status || 'invited') as ReplyFamily['status'],
+      respondedAt: respondedAt.get(f.id) || null,
+      inviteCode: inviteInfo.get(f.id)?.invite_code || null,
+      phone: inviteInfo.get(f.id)?.contact_phone || null,
+      guests: hc?.total || 0
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name))
+  const guestMessages: GuestMessage[] = ((messagesRes.data || []) as { family_id: string; note: string | null; travel: string | null; submitted_at: string }[])
+    .filter(m => m.note || m.travel)
+    .map(m => ({ familyName: planningFamilies.find(f => f.id === m.family_id)?.family_name || 'Family', note: m.note, travel: m.travel, submittedAt: m.submitted_at }))
 
   const plannedGifting = Math.round((Number(func.planned_lifafa_total) || 0) + (Number(func.planned_return_gift_total) || 0))
 
@@ -328,6 +363,20 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               )}
             </div>
           </section>
+
+          {invitesReady && canEditSchedule && 'venue_name' in func && (
+            <FunctionGuestDetails
+              functionId={func.id}
+              initial={{
+                venue_name: func.venue_name ?? null,
+                venue_address: func.venue_address ?? null,
+                map_url: func.map_url ?? null,
+                dress_code: func.dress_code ?? null,
+                dress_colors: func.dress_colors ?? null,
+                guest_note: func.guest_note ?? null
+              }}
+            />
+          )}
 
           <FunctionSchedule
             functionId={func.id}
@@ -573,6 +622,11 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
               </Button>
             </Link>
           </section>
+
+          {/* Invitation replies (hidden until 14_guest_invitations.sql is run) */}
+          {invitesReady && canEditSchedule && replyFamilies.length > 0 && (
+            <FunctionReplies functionName={func.name} families={replyFamilies} messages={guestMessages} couple={coupleRes.data || {}} />
+          )}
 
           {/* Tasks for this function (hidden until 13_tasks_links.sql is run) */}
           {!tasksRes.error && (

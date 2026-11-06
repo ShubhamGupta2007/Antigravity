@@ -167,3 +167,31 @@ export function themeFor(index: number, total: number) {
   if (index === total - 1) return EVENT_THEMES[3]
   return EVENT_THEMES[[0, 1, 2, 4][index % 4]]
 }
+
+// ---------------------------------------------------------------------------
+// Sharing invitations (planner side)
+// ---------------------------------------------------------------------------
+
+export function inviteUrl(origin: string, code: string) {
+  return `${origin.replace(/\/$/, '')}/invite/${code}`
+}
+
+export function inviteMessage(familyName: string, couple: { bride_name?: string | null; groom_name?: string | null }, url: string) {
+  const bride = couple.bride_name || 'Swati'
+  const groom = couple.groom_name || 'Satyam'
+  return `Namaste ${familyGreetingName(familyName)} 🙏\n\nWith great joy, we invite you to celebrate the wedding of ${bride} & ${groom}.\n\nYour personal invitation, with the celebrations you're invited to, is here. Please let us know who is coming:\n${url}`
+}
+
+export function reminderMessage(familyName: string, couple: { bride_name?: string | null; groom_name?: string | null }, url: string, functionName?: string) {
+  const bride = couple.bride_name || 'Swati'
+  const groom = couple.groom_name || 'Satyam'
+  return `Namaste ${familyGreetingName(familyName)} 🙏\n\nA gentle reminder to let us know who is coming${functionName ? ` to the ${functionName}` : ''} for ${bride} & ${groom}'s wedding. It takes a minute:\n${url}`
+}
+
+/** wa.me link; with a phone it opens that chat (Indian numbers get +91 if no country code). */
+export function whatsappUrl(text: string, phone?: string | null) {
+  let digits = (phone || '').replace(/\D/g, '')
+  if (digits.length === 10) digits = `91${digits}`
+  if (digits.length === 11 && digits.startsWith('0')) digits = `91${digits.slice(1)}`
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+}

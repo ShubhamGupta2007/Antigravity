@@ -6,6 +6,10 @@ import { Button } from '@/components/ui/button'
 import { UserPlus, Search, ChevronDown, ChevronUp, Plus, CalendarDays, Settings, Edit2 } from 'lucide-react'
 import KidToggle from './KidToggle'
 import ShagunHistory, { ShagunBadge, type FamilyShagun } from './ShagunHistory'
+import InviteShare from './InviteShare'
+import PendingMemberActions from './PendingMemberActions'
+
+type Couple = { bride_name?: string | null; groom_name?: string | null }
 
 type FamilyMember = {
   id: string
@@ -14,6 +18,7 @@ type FamilyMember = {
   relation_to_head: string | null
   gender: string
   is_kid_for_gifting: boolean
+  pending_approval?: boolean | null
 }
 
 type Family = {
@@ -28,6 +33,7 @@ type Family = {
   contact_person: string | null
   contact_phone: string | null
   relationship: string | null
+  invite_code?: string | null
   family_members: FamilyMember[]
   function_attendance?: {
     function_id: string
@@ -42,7 +48,7 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 // Custom Action Menu Component
-function ActionMenu({ family }: { family: Family }) {
+function ActionMenu({ family, couple }: { family: Family; couple: Couple }) {
   const [open, setOpen] = useState(false)
   
   return (
@@ -70,6 +76,8 @@ function ActionMenu({ family }: { family: Family }) {
           <Link href={`/guests/${family.id}/functions`} className="flex items-center px-4 py-2.5 text-xs text-maroon hover:bg-blue-50 font-data">
             <CalendarDays className="w-3.5 h-3.5 mr-2" /> Manage Functions
           </Link>
+          {family.invite_code && <div className="my-1 border-t border-marigold/15" />}
+          <InviteShare code={family.invite_code} familyName={family.family_name} phone={family.contact_phone} couple={couple} />
         </div>
       )}
     </div>
@@ -80,12 +88,14 @@ export default function GuestListManager({
   initialFamilies,
   role,
   userSide,
-  shagunByFamily = {}
+  shagunByFamily = {},
+  couple = {}
 }: {
   initialFamilies: Family[]
   role: string
   userSide?: string
   shagunByFamily?: Record<string, FamilyShagun[]>
+  couple?: Couple
 }) {
   const [selectedTier, setSelectedTier] = useState<string>(() => {
     if (typeof window !== 'undefined') return sessionStorage.getItem('guestList_selectedTier') || 'all'
@@ -381,6 +391,7 @@ export default function GuestListManager({
             expandedFamilies={expandedFamilies}
             onToggleExpand={toggleExpand}
             shagunByFamily={shagunByFamily}
+            couple={couple}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -392,6 +403,7 @@ export default function GuestListManager({
                 isExpanded={!!expandedFamilies[family.id]}
                 onToggleExpand={() => toggleExpand(family.id)}
                 shagun={shagunByFamily[family.id] || []}
+                couple={couple}
               />
             ))}
           </div>
@@ -416,13 +428,15 @@ function GuestTable({
   canEdit,
   expandedFamilies,
   onToggleExpand,
-  shagunByFamily
+  shagunByFamily,
+  couple
 }: {
   families: Family[]
   canEdit: boolean
   expandedFamilies: Record<string, boolean>
   onToggleExpand: (id: string) => void
   shagunByFamily: Record<string, FamilyShagun[]>
+  couple: Couple
 }) {
   return (
     <div className="overflow-x-auto border border-marigold/20 rounded-2xl shadow-sm bg-white">
@@ -526,7 +540,7 @@ function GuestTable({
                     </div>
                   </td>
                   <td className="p-4 text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                    {canEdit && <ActionMenu family={family} />}
+                    {canEdit && <ActionMenu family={family} couple={couple} />}
                   </td>
                 </tr>
                 
@@ -564,6 +578,7 @@ function GuestTable({
                                     {member.gender && member.gender !== 'Unknown' ? `, ${member.gender}` : ''})
                                   </span>
                                   <KidToggle memberId={member.id} age={member.age} initialIsKid={member.is_kid_for_gifting} canEdit={canEdit} />
+                                  {member.pending_approval && canEdit && <PendingMemberActions memberId={member.id} name={member.name} />}
                                   {canEdit && (
                                     <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity ml-1">
                                       <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>
@@ -594,13 +609,15 @@ function FamilyCard({
   canEdit,
   isExpanded,
   onToggleExpand,
-  shagun = []
+  shagun = [],
+  couple
 }: {
   family: Family
   canEdit: boolean
   isExpanded: boolean
   onToggleExpand: () => void
   shagun?: FamilyShagun[]
+  couple: Couple
 }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 flex flex-col justify-between">
@@ -627,7 +644,7 @@ function FamilyCard({
           </div>
           {canEdit && (
             <div className="flex justify-end pt-2 border-t border-marigold/10 mt-2">
-              <ActionMenu family={family} />
+              <ActionMenu family={family} couple={couple} />
             </div>
           )}
         </div>
@@ -720,6 +737,7 @@ function FamilyCard({
                         {member.age ? `, ${member.age} yrs` : ''}
                       </span>
                       <KidToggle memberId={member.id} age={member.age} initialIsKid={member.is_kid_for_gifting} canEdit={canEdit} />
+                      {member.pending_approval && canEdit && <PendingMemberActions memberId={member.id} name={member.name} />}
                       {canEdit && (
                         <Link href={`/guests/${family.id}/members/${member.id}/edit`} className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <span className="text-maroon/60 hover:text-maroon text-[10px]">✏️</span>

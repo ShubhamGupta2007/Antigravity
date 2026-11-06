@@ -88,6 +88,8 @@ export default async function GuestsPage() {
     .from('shagun_received')
     .select('function_id, family_id, amount, item, functions (name, event_date)')
     .not('family_id', 'is', null)
+  // Couple's names for invitation messages (empty until 14_guest_invitations.sql is run)
+  const { data: weddingSettings } = await supabase.from('wedding_settings').select('bride_name, groom_name').eq('id', 1).maybeSingle()
   const shagunByFamily: Record<string, FamilyShagun[]> = {}
   ;((shagunRows || []) as unknown as FamilyShagun[]).forEach(r => {
     if (r.family_id) (shagunByFamily[r.family_id] ||= []).push(r)
@@ -243,6 +245,7 @@ export default async function GuestsPage() {
         role={role}
         userSide={userSide}
         shagunByFamily={shagunByFamily}
+        couple={weddingSettings || {}}
       />
     </main>
   )

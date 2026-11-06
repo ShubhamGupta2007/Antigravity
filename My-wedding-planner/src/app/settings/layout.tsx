@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, Shield, Eye } from 'lucide-react'
+import { User, Shield, Eye, Heart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
@@ -38,11 +38,16 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const navItems = [
     { name: 'Profile', href: '/settings/profile', icon: User },
     { name: 'Users', href: '/settings/users', icon: Shield },
+    { name: 'Wedding', href: '/settings/wedding', icon: Heart },
   ]
 
   const visibleNavItems = navItems.filter(item => {
     // Only full Admins can see the Users tab
     if (item.name === 'Users' && role !== 'admin') {
+      return false
+    }
+    // Wedding details for invitations: admin, planner, bride, groom
+    if (item.name === 'Wedding' && !['admin', 'planner', 'bride', 'groom'].includes(role || '')) {
       return false
     }
     return true
