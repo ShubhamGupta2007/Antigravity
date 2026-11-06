@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
+import { format } from 'date-fns'
+import { parseEventDate } from '@/lib/functionPlanning'
 import ManageInvitesClient from './ManageInvitesClient'
 
 interface PageProps {
@@ -89,19 +90,22 @@ export default async function ManageInvitesPage({ params }: PageProps) {
     .eq('function_id', func.id)
 
   return (
-    <main className="min-h-screen flex flex-col p-6 max-w-lg mx-auto bg-ivory pb-24">
-      <header className="flex items-center space-x-4 py-4 border-b border-marigold/30 mb-6">
-        <Link href={`/functions/${func.id}`}>
-          <Button variant="ghost" size="icon" className="text-maroon/70 hover:text-maroon hover:bg-marigold/10">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-xl font-display font-semibold text-maroon">Manage Invites</h1>
-          <p className="text-xs text-maroon/50 font-data">{func.name}</p>
+    <main className="min-h-screen bg-ivory">
+      <header className="bg-gradient-to-br from-[#3A0B20] to-maroon text-white">
+        <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-4">
+          <Link href={`/functions/${func.id}?view=guests`} aria-label="Back to the function" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-bold text-[#F2C46D]">Who&apos;s invited</h1>
+            <p className="truncate font-data text-xs text-white/75">
+              {func.name}{func.event_date ? ` · ${format(parseEventDate(func.event_date), 'EEE d MMM')}` : ''}
+            </p>
+          </div>
         </div>
       </header>
 
+      <div className="mx-auto max-w-2xl px-4 pt-5">
       <ManageInvitesClient 
         func={func}
         families={families || []}
@@ -111,6 +115,7 @@ export default async function ManageInvitesPage({ params }: PageProps) {
         initialGiftCounts={giftCounts || []}
         canEditGifts={['admin', 'planner', 'bride', 'groom'].includes(role)}
       />
+      </div>
     </main>
   )
 }

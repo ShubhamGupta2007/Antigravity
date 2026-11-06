@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Search, Sparkles, UserCheck } from 'lucide-react'
+import { Check, ChevronDown, Minus, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   DEFAULT_KID_AGE,
@@ -53,15 +53,18 @@ type Attendance = {
 }
 
 type HeadcountDraft = { adults: string; kids: string }
+type RoomState = { needs_room: boolean; rooms_assigned: number; room_numbers: string }
 
 type GiftRuleLite = { id: string; rule_name: string; amount: number }
 type GiftCountLite = { rule_id: string; family_id: string; quantity: number }
 
+type FunctionLite = { id: string; name: string; kid_age_threshold?: number | null }
+
 type ManageInvitesClientProps = {
-  func: any
+  func: FunctionLite
   families: Family[]
   initialAttendance: Attendance[]
-  requiredGuests: any[]
+  requiredGuests: unknown[]
   giftRules?: GiftRuleLite[]
   initialGiftCounts?: GiftCountLite[]
   canEditGifts?: boolean
@@ -81,7 +84,8 @@ export default function ManageInvitesClient({
   const [sideFilter, setSideFilter] = useState<'all' | 'groom' | 'bride'>('all')
   const [tierFilter, setTierFilter] = useState<'all' | 'tier_1' | 'tier_2' | 'tier_3'>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [loading, setLoading] = useState<Record<string, boolean>>({})
+  const [showFilter, setShowFilter] = useState<'all' | 'invited' | 'not'>('all')
+  const [openId, setOpenId] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -145,8 +149,8 @@ export default function ManageInvitesClient({
   }
 
   // State to optimistically manage room requirements before refresh
-  const [roomsState, setRoomsState] = useState<Record<string, { needs_room: boolean; rooms_assigned: number; room_numbers: string }>>(() => {
-    const map: Record<string, any> = {}
+  const [roomsState, setRoomsState] = useState<Record<string, RoomState>>(() => {
+    const map: Record<string, RoomState> = {}
     families.forEach(f => {
       map[f.id] = {
         needs_room: f.needs_room || false,
@@ -180,9 +184,9 @@ export default function ManageInvitesClient({
     setHasUnsavedChanges(true)
   }
 
-  const handleRoomChange = (familyId: string, field: string, value: any) => {
+  const handleRoomChange = <K extends keyof RoomState>(familyId: string, field: K, value: RoomState[K]) => {
     const currentState = roomsState[familyId] || { needs_room: false, rooms_assigned: 0, room_numbers: '' }
-    const updatedState = { ...currentState, [field]: value }
+    const updatedState: RoomState = { ...currentState, [field]: value }
     
     // Automatically assign 1 room if they toggle needs_room to true and it was 0
     if (field === 'needs_room' && value === true && updatedState.rooms_assigned === 0) {
@@ -201,45 +205,10 @@ export default function ManageInvitesClient({
     setHasUnsavedChanges(true)
   }
 
-  const handleAutoInviteTier = (tier: 'tier_1' | 'tier_2' | 'tier_3') => {
-    const targetFamilies = families.filter(f => f.relation_tier === tier)
-    
-    const tierName = tier === 'tier_1' ? 'Hosts' : tier === 'tier_2' ? 'Close Circle' : 'Extended Families'
-    
-    if (targetFamilies.length === 0) {
-      alert(`You don't have any families added to the ${tierName} tier yet.`)
-      return
-    }
-
-    // Check if all members of these families are already invited
-    const allAlreadyInvited = targetFamilies.every(f => {
-      const familyChecked = attendanceMap[`${f.id}-family`]
-      const membersChecked = f.family_members.length === 0 || f.family_members.every(m => attendanceMap[`${f.id}-${m.id}`])
-      return familyChecked || membersChecked
-    })
-
-    const actionText = allAlreadyInvited ? 'UNINVITE' : 'INVITE'
-    const isConfirmed = window.confirm(`Are you sure you want to ${actionText} all ${tierName} for this function?`)
-    
-    if (!isConfirmed) return
-
-    const updatedMap = { ...attendanceMap }
-
-    targetFamilies.forEach(f => {
-      updatedMap[`${f.id}-family`] = !allAlreadyInvited
-      f.family_members.forEach(m => {
-        updatedMap[`${f.id}-${m.id}`] = !allAlreadyInvited
-      })
-    })
-
-    setAttendanceMap(updatedMap)
-    setHasUnsavedChanges(true)
-  }
-
   const handleSaveChanges = async (exitAfterSave = false) => {
     setSaving(true)
     try {
-      const upserts: any[] = []
+      const upserts: Record<string, string | number | boolean | null>[] = []
       const toDelete: { family_id: string, member_id: string | null }[] = []
       const headcountUpdates: { family_id: string, adults_count: number | null, kids_count: number | null, rsvp_status: RsvpStatus }[] = []
 
@@ -360,21 +329,6 @@ export default function ManageInvitesClient({
     }
   }
 
-  // Filtered families list
-  const filteredFamilies = families.filter(f => {
-    const matchesSearch = f.family_name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesSide = sideFilter === 'all' || f.side === sideFilter
-    const matchesTier = tierFilter === 'all' || f.relation_tier === tierFilter
-    const matchesCategory = categoryFilter === 'all' || f.relationship === categoryFilter
-    return matchesSearch && matchesSide && matchesTier && matchesCategory
-  })
-
-  const getTierLabel = (tier: string) => {
-    if (tier === 'tier_1') return '👑 Immediate Family / Hosts'
-    if (tier === 'tier_2') return '🤝 Close Circle'
-    return 'Extended Circle'
-  }
-
   // Calculate stats for currently selected (invited) guests, using the same
   // maths as the function page (named members + expected counts + overrides)
   const draftRows: PlanningAttendance[] = []
@@ -404,403 +358,350 @@ export default function ManageInvitesClient({
     if (stats.byFamily[f.id] && roomsState[f.id]?.needs_room) totalRooms += roomsState[f.id].rooms_assigned || 0
   })
 
+  const familyLabel = (name: string) => (name.toLowerCase().endsWith('family') ? name : `${name} Family`)
+  const TIER: Record<Family['relation_tier'], string> = { tier_1: '👑 Host', tier_2: '🤝 Close', tier_3: '🏡 Extended' }
+
+  // Invite state of one family: whole family, some members, or not at all
+  const inviteState = (f: Family) => {
+    const famOn = !!attendanceMap[`${f.id}-family`]
+    const picked = f.family_members.filter(m => attendanceMap[`${f.id}-${m.id}`]).length
+    const all = f.family_members.length > 0 && picked === f.family_members.length
+    return { invited: famOn || picked > 0, whole: famOn || all, picked }
+  }
+
+  const matchesFilters = (f: Family) =>
+    f.family_name.toLowerCase().includes(searchTerm.trim().toLowerCase()) &&
+    (sideFilter === 'all' || f.side === sideFilter) &&
+    (tierFilter === 'all' || f.relation_tier === tierFilter) &&
+    (categoryFilter === 'all' || f.relationship === categoryFilter)
+
+  const filtered = families.filter(matchesFilters)
+  const invitedCount = filtered.filter(f => inviteState(f).invited).length
+  const filteredFamilies = filtered.filter(f =>
+    showFilter === 'all' ? true : showFilter === 'invited' ? inviteState(f).invited : !inviteState(f).invited
+  )
+
+  // One button for the families on screen: invite them all, or (if all are in) take them all off
+  const allShownInvited = filteredFamilies.length > 0 && filteredFamilies.every(f => inviteState(f).whole)
+  const bulkToggle = () => {
+    const n = filteredFamilies.length
+    const verb = allShownInvited ? 'Remove' : 'Invite'
+    if (!window.confirm(`${verb} ${n} ${n === 1 ? 'family' : 'families'} ${allShownInvited ? 'from' : 'to'} ${func.name}?`)) return
+    const next = { ...attendanceMap }
+    filteredFamilies.forEach(f => {
+      next[`${f.id}-family`] = !allShownInvited
+      f.family_members.forEach(m => { next[`${f.id}-${m.id}`] = !allShownInvited })
+    })
+    setAttendanceMap(next)
+    setHasUnsavedChanges(true)
+  }
+
+  const chip = (on: boolean) =>
+    `shrink-0 rounded-full border px-3 py-1.5 font-data text-xs font-semibold transition-colors ${on ? 'border-maroon bg-maroon text-ivory' : 'border-marigold/40 bg-white text-maroon hover:bg-marigold/10'}`
+
+  const filtersActive = searchTerm.trim() !== '' || sideFilter !== 'all' || tierFilter !== 'all' || categoryFilter !== 'all'
+
   return (
-    <div className="space-y-6">
-      {/* Current Invite Stats */}
-      <section className="bg-gradient-to-br from-marigold/20 to-marigold/5 p-4 rounded-xl border border-marigold/30 shadow-sm">
-        <h3 className="text-sm font-display font-semibold text-maroon mb-3">
-          Invited Guests Overview
-        </h3>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+    <div className="space-y-5 pb-28">
+      {/* Summary */}
+      <section className="rounded-2xl border border-marigold/30 bg-white p-4 shadow-sm" aria-label="Invited so far">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <div className="text-3xl font-display font-bold text-maroon leading-none">{totalInvited}</div>
-            <div className="text-[10px] font-data text-maroon/70 font-semibold uppercase tracking-wider mt-1">Total Invited</div>
+            <p className="font-data text-[10px] font-bold uppercase tracking-widest text-maroon/50">Coming to {func.name}</p>
+            <p className="font-display text-4xl font-bold leading-none text-maroon">{totalInvited}<span className="ml-1.5 font-data text-sm font-medium text-maroon/60">guests</span></p>
           </div>
-          <div>
-            <div className="text-xl font-display font-bold text-maroon leading-none">{familiesInvited}</div>
-            <div className="text-[10px] font-data text-maroon/70 font-semibold uppercase tracking-wider mt-1">Families</div>
-          </div>
-          <div>
-            <div className="text-xl font-display font-bold text-mehendi leading-none">{stats.confirmedTotal}</div>
-            <div className="text-[10px] font-data text-maroon/70 font-semibold uppercase tracking-wider mt-1">Confirmed{stats.declinedFamilies > 0 ? ` • ${stats.declinedFamilies} declined` : ''}</div>
-          </div>
-          <div className="flex gap-4 ml-auto bg-white/50 p-2.5 rounded-lg border border-white/60">
-            <div className="text-center">
-              <div className="text-sm font-bold text-maroon flex items-center justify-center"><span className="text-xs mr-1">🧑</span> {adultsInvited}</div>
-              <div className="text-[9px] font-data text-maroon/60 uppercase">Adults</div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-bold text-maroon flex items-center justify-center"><span className="text-xs mr-1">🧸</span> {kidsInvited}</div>
-              <div className="text-[9px] font-data text-maroon/60 uppercase">Kids</div>
-            </div>
-            <div className="text-center">
-              <div className="text-sm font-bold text-maroon flex items-center justify-center"><span className="text-xs mr-1">👵</span> {seniorsInvited}</div>
-              <div className="text-[9px] font-data text-maroon/60 uppercase">Seniors</div>
-            </div>
-          </div>
-          <div className="text-center bg-white/50 p-2.5 rounded-lg border border-white/60 min-w-[90px]">
-            <div className="text-sm font-bold text-maroon flex items-center justify-center"><span className="text-xs mr-1">✈️</span> {outstationInvited}</div>
-            <div className="text-[9px] font-data text-maroon/60 uppercase">Outstation</div>
-            {totalRooms > 0 && (
-              <div className="text-[8px] font-data text-marigold-dark font-bold uppercase mt-0.5">{totalRooms} Rooms</div>
-            )}
+          <div className="text-right font-data text-xs text-maroon/70">
+            <p><b className="text-maroon">{familiesInvited}</b> families</p>
+            <p className="text-mehendi"><b>{stats.confirmedTotal}</b> confirmed</p>
+            {stats.declinedFamilies > 0 && <p className="text-rust-red">{stats.declinedFamilies} declined</p>}
           </div>
         </div>
+        {totalInvited > 0 && (
+          <p className="mt-3 border-t border-marigold/15 pt-2.5 font-data text-[11px] text-maroon/60">
+            🧑 {adultsInvited} adults · 🧸 {kidsInvited} kids · 👵 {seniorsInvited} seniors · ✈️ {outstationInvited} outstation{totalRooms > 0 ? ` · 🏨 ${totalRooms} rooms` : ''}
+          </p>
+        )}
       </section>
-      {/* Auto-Invite Actions */}
-      <section className="bg-white p-4 rounded-xl border border-marigold/30 shadow-sm space-y-3">
-        <h3 className="text-sm font-display font-semibold text-maroon flex items-center">
-          <Sparkles className="w-4 h-4 mr-1 text-marigold" /> Auto-Invite Helpers
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="border-marigold/50 text-maroon hover:bg-marigold/10 text-xs"
-            onClick={() => handleAutoInviteTier('tier_2')}
-          >
-            🤝 Invite Close Circle
-          </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="border-marigold/50 text-maroon hover:bg-marigold/10 text-xs"
-            onClick={() => handleAutoInviteTier('tier_3')}
-          >
-            🌍 Invite Extended
-          </Button>
-          <Button 
-            size="sm" 
-            className="bg-maroon text-ivory hover:bg-maroon/90 text-xs font-semibold shadow-sm"
-            onClick={() => {
-              handleAutoInviteTier('tier_1')
-              handleAutoInviteTier('tier_2')
-              handleAutoInviteTier('tier_3')
-            }}
-          >
-            ✨ Invite Everyone
-          </Button>
+
+      {/* Find families */}
+      <section className="space-y-2.5">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-maroon/40" />
+          <Input
+            placeholder="Search families"
+            aria-label="Search families"
+            className="h-11 rounded-full border-marigold/40 bg-white pl-9 font-data text-sm"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" aria-label="Filters">
+          {([['all', 'Both sides'], ['groom', '🤵‍♂️ Groom'], ['bride', '👰‍♀️ Bride']] as const).map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={sideFilter === id} onClick={() => setSideFilter(id)} className={chip(sideFilter === id)}>{label}</button>
+          ))}
+          <span className="mx-0.5 w-px shrink-0 bg-marigold/30" aria-hidden="true" />
+          {([['all', 'All circles'], ['tier_1', '👑 Hosts'], ['tier_2', '🤝 Close'], ['tier_3', '🏡 Extended']] as const).map(([id, label]) => (
+            <button key={id} type="button" aria-pressed={tierFilter === id} onClick={() => setTierFilter(id)} className={chip(tierFilter === id)}>{label}</button>
+          ))}
+          {uniqueRelationships.length > 0 && (
+            <select
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+              aria-label="Relationship"
+              className={`${chip(categoryFilter !== 'all')} appearance-none pr-3`}
+            >
+              <option value="all">Any relationship</option>
+              {uniqueRelationships.map(rel => <option key={rel} value={rel}>{rel}</option>)}
+            </select>
+          )}
         </div>
       </section>
 
-      {/* Search & Filters */}
-      <section className="space-y-3 bg-white/80 p-4 rounded-xl border border-marigold/30 shadow-sm">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-maroon/40" />
-            <Input 
-              placeholder="Search family name..." 
-              className="pl-9 bg-ivory border-marigold/50 font-data w-full text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 text-sm bg-ivory rounded-md border border-marigold/50 focus:border-marigold focus:ring-1 focus:ring-marigold outline-none text-maroon font-data"
-            disabled={uniqueRelationships.length === 0}
-          >
-            <option value="all">All Relationships</option>
-            {uniqueRelationships.map(rel => (
-              <option key={rel} value={rel}>{rel}</option>
-            ))}
-          </select>
+      {/* Show: all / invited / not invited, plus one bulk action */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-full border border-marigold/30 bg-white p-0.5 font-data text-xs" role="tablist" aria-label="Show">
+          {([
+            ['all', `All ${filtered.length}`],
+            ['invited', `Invited ${invitedCount}`],
+            ['not', `Not invited ${filtered.length - invitedCount}`]
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={showFilter === id}
+              onClick={() => setShowFilter(id)}
+              className={`rounded-full px-3 py-1.5 transition-colors ${showFilter === id ? 'bg-maroon font-semibold text-ivory' : 'text-maroon/70 hover:text-maroon'}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-
-        {/* Tier Tabs */}
-        <div className="flex flex-wrap gap-1.5 pb-2 border-b border-marigold/10">
-          {[
-            { id: 'all', label: 'All Tiers 🌐' },
-            { id: 'tier_1', label: 'Hosts 👑' },
-            { id: 'tier_2', label: 'Close 🤝' },
-            { id: 'tier_3', label: 'Extended 🏡' }
-          ].map(tab => {
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setTierFilter(tab.id as any)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide transition-all ${
-                  tierFilter === tab.id
-                    ? 'bg-maroon text-ivory shadow-sm'
-                    : 'bg-marigold/10 text-maroon hover:bg-marigold/20'
-                }`}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Side filter toggle */}
-        <div className="flex bg-marigold/10 p-0.5 rounded-lg text-xs font-data">
-          <button 
-            onClick={() => setSideFilter('all')}
-            className={`flex-1 py-1.5 rounded-md transition-all ${sideFilter === 'all' ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70'}`}
-          >
-            All Sides
+        {filteredFamilies.length > 0 && (
+          <button type="button" onClick={bulkToggle} className="rounded-full border border-marigold/50 bg-marigold/10 px-3 py-1.5 font-data text-xs font-semibold text-maroon hover:bg-marigold/20">
+            {allShownInvited ? `Remove all ${filteredFamilies.length}` : `✨ Invite all ${filteredFamilies.length}${filtersActive ? ' shown' : ''}`}
           </button>
-          <button 
-            onClick={() => setSideFilter('groom')}
-            className={`flex-1 py-1.5 rounded-md transition-all ${sideFilter === 'groom' ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70'}`}
-          >
-            🤵‍♂️ Groom&apos;s
-          </button>
-          <button 
-            onClick={() => setSideFilter('bride')}
-            className={`flex-1 py-1.5 rounded-md transition-all ${sideFilter === 'bride' ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70'}`}
-          >
-            👰‍♀️ Bride&apos;s
-          </button>
-        </div>
-      </section>
+        )}
+      </div>
 
-      {/* Families List */}
-      <section className="space-y-4">
-        {filteredFamilies.length === 0 ? (
-          <p className="text-sm font-data text-maroon/50 italic text-center py-8">No matching families found.</p>
-        ) : (
-          filteredFamilies.map(family => {
-            const familyKey = `${family.id}-family`
-            const isFamilyChecked = attendanceMap[familyKey] || false
-            
-            // Check if all members are selected
-            const allMembersChecked = family.family_members.length > 0 && 
-              family.family_members.every(m => attendanceMap[`${family.id}-${m.id}`])
+      {/* Families */}
+      <ul className="space-y-2">
+        {filteredFamilies.length === 0 && (
+          <li className="rounded-2xl border border-dashed border-marigold/40 p-8 text-center font-data text-sm text-maroon/50">
+            {showFilter === 'invited' ? 'No one invited yet. Tap + next to a family to invite them.' : showFilter === 'not' ? 'Everyone here is invited. 🎉' : 'No families match.'}
+          </li>
+        )}
+        {filteredFamilies.map(family => {
+          const st = inviteState(family)
+          const isFamilyChecked = !!attendanceMap[`${family.id}-family`]
+          const hc = stats.byFamily[family.id]
+          const current = rsvp[family.id] || 'invited'
+          const isOpen = openId === family.id
+          const room = roomsState[family.id]
+          const people = hc?.total ?? 0
 
-            return (
-              <div key={family.id} className="bg-white p-4 rounded-xl border border-marigold/20 shadow-xs space-y-3">
-                
-                {/* Family Header Selector */}
-                <div className="flex items-center justify-between border-b border-marigold/10 pb-2">
-                  <div className="flex items-start space-x-2">
-                    <input 
-                      type="checkbox"
-                      id={family.id}
-                      checked={isFamilyChecked || allMembersChecked}
-                      disabled={loading[familyKey]}
-                      onChange={(e) => handleFamilyToggle(family, e.target.checked)}
-                      className="h-4 w-4 rounded border-marigold/50 text-maroon focus:ring-maroon mt-0.5 cursor-pointer accent-maroon"
-                    />
+          const status = !st.invited
+            ? null
+            : !isFamilyChecked && !st.whole
+              ? { text: `${st.picked} of ${family.family_members.length} invited`, cls: 'bg-marigold/15 text-maroon' }
+              : current === 'confirmed'
+                ? { text: `✅ ${people} coming`, cls: 'bg-mehendi/15 text-mehendi' }
+                : current === 'declined'
+                  ? { text: '✖ Declined', cls: 'bg-rust-red/10 text-rust-red' }
+                  : { text: `✉️ ${people} invited`, cls: 'bg-maroon/10 text-maroon' }
+
+          return (
+            <li key={family.id} className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${st.invited ? 'border-mehendi/40' : 'border-marigold/25'}`}>
+              <div className="flex items-center gap-3 p-3">
+                <button
+                  type="button"
+                  onClick={() => handleFamilyToggle(family, !st.whole)}
+                  aria-pressed={st.whole}
+                  aria-label={st.whole ? `Remove ${family.family_name} from ${func.name}` : `Invite ${family.family_name} to ${func.name}`}
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 transition-colors ${st.whole ? 'border-mehendi bg-mehendi text-white' : st.invited ? 'border-mehendi bg-mehendi/15 text-mehendi' : 'border-marigold/50 bg-white text-maroon/60 hover:bg-marigold/10'}`}
+                >
+                  {st.invited ? <Check className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+                </button>
+                <button type="button" onClick={() => setOpenId(isOpen ? null : family.id)} aria-expanded={isOpen} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-data text-sm font-semibold text-maroon">{familyLabel(family.family_name)}</span>
+                    <span className="block truncate font-data text-[11px] text-maroon/55">
+                      {family.side === 'groom' ? '🤵‍♂️' : '👰‍♀️'} {TIER[family.relation_tier]}
+                      {family.relationship ? ` · ${family.relationship}` : ''}
+                      {family.is_local ? '' : ` · ✈️ ${family.city || 'Outstation'}`}
+                      {room?.needs_room ? ` · 🏨 ${room.rooms_assigned}` : ''}
+                    </span>
+                  </span>
+                  {status && <span className={`shrink-0 rounded-full px-2 py-0.5 font-data text-[10px] font-bold ${status.cls}`}>{status.text}</span>}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-maroon/40 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {isOpen && (
+                <div className="space-y-4 border-t border-marigold/15 bg-ivory/40 p-4">
+                  {isFamilyChecked && (
+                    <>
+                      <div>
+                        <p className="mb-1.5 font-data text-[10px] font-bold uppercase tracking-wide text-maroon/50">Reply</p>
+                        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="RSVP">
+                          {(['invited', 'confirmed', 'declined'] as RsvpStatus[]).map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              role="radio"
+                              aria-checked={current === s}
+                              onClick={() => handleRsvpChange(family.id, s)}
+                              className={`rounded-xl border px-2 py-2 font-data text-xs font-semibold transition-colors ${
+                                current === s
+                                  ? s === 'confirmed' ? 'border-mehendi bg-mehendi text-white' : s === 'declined' ? 'border-rust-red bg-rust-red text-white' : 'border-maroon bg-maroon text-ivory'
+                                  : 'border-marigold/30 bg-white text-maroon/70 hover:bg-marigold/10'
+                              }`}
+                            >
+                              {s === 'confirmed' ? '✅ ' : s === 'declined' ? '✖ ' : '✉️ '}{s === 'invited' ? 'No reply' : RSVP_LABELS[s]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {current !== 'declined' && (
+                        <div>
+                          <p className="mb-1.5 font-data text-[10px] font-bold uppercase tracking-wide text-maroon/50">How many are coming</p>
+                          <div className="flex flex-wrap items-center gap-3">
+                            {(['adults', 'kids'] as const).map(field => {
+                              const auto = field === 'adults' ? hc?.autoAdults : hc?.autoKids
+                              const raw = headcounts[family.id]?.[field] ?? ''
+                              const value = raw === '' ? Number(auto ?? 0) : Number(raw)
+                              const step = (d: number) => handleHeadcountChange(family.id, field, String(Math.max(0, value + d)))
+                              return (
+                                <div key={field} className="flex items-center gap-2">
+                                  <span className="w-12 font-data text-xs font-semibold text-maroon">{field === 'adults' ? 'Adults' : 'Kids'}</span>
+                                  <div className="flex items-center rounded-full border border-marigold/40 bg-white">
+                                    <button type="button" onClick={() => step(-1)} aria-label={`One fewer ${field === 'adults' ? 'adult' : 'kid'}`} className="grid h-8 w-8 place-items-center text-maroon"><Minus className="h-3.5 w-3.5" /></button>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      inputMode="numeric"
+                                      aria-label={field === 'adults' ? 'Adults' : 'Kids'}
+                                      placeholder={String(auto ?? '')}
+                                      value={raw}
+                                      onChange={e => handleHeadcountChange(family.id, field, e.target.value)}
+                                      className="w-10 bg-transparent text-center font-data text-sm font-semibold text-maroon outline-none [appearance:textfield] placeholder:text-maroon/40"
+                                    />
+                                    <button type="button" onClick={() => step(1)} aria-label={`One more ${field === 'adults' ? 'adult' : 'kid'}`} className="grid h-8 w-8 place-items-center text-maroon"><Plus className="h-3.5 w-3.5" /></button>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                            {(headcounts[family.id]?.adults || headcounts[family.id]?.kids) ? (
+                              <button type="button" onClick={() => { handleHeadcountChange(family.id, 'adults', ''); handleHeadcountChange(family.id, 'kids', '') }} className="font-data text-[11px] font-semibold text-maroon/60 underline">
+                                Use usual ({hc?.autoAdults ?? 0} + {hc?.autoKids ?? 0})
+                              </button>
+                            ) : (
+                              <span className="font-data text-[11px] text-maroon/50">Their usual numbers</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {family.family_members.length > 0 && (
                     <div>
-                      <label htmlFor={family.id} className="font-data font-semibold text-maroon text-sm cursor-pointer hover:text-maroon/80 flex items-center gap-2">
-                        {family.family_name.toLowerCase().endsWith('family') ? family.family_name : `${family.family_name} Family`}
-                        <span className="text-[10px] bg-marigold/20 px-1.5 py-0.5 rounded font-medium">
-                          {(family.expected_adults_count || 1) + (family.expected_kids_count || 0)} members
-                        </span>
-                      </label>
-                      <div className="text-[10px] font-data text-maroon/60 flex flex-wrap gap-x-2 gap-y-1 mt-1">
-                        <span>{getTierLabel(family.relation_tier)}</span>
-                        <span>•</span>
-                        <span>{family.side === 'groom' ? '🤵‍♂️ Groom side' : '👰‍♀️ Bride side'}</span>
-                        {family.relationship && (
-                          <>
-                            <span>•</span>
-                            <span className="font-medium text-maroon">{family.relationship}</span>
-                          </>
-                        )}
-                        <span>•</span>
-                        <span className={family.is_local ? 'text-mehendi font-medium' : 'text-rust-red font-medium'}>
-                          {family.is_local ? 'Local 🚗' : 'Outstation ✈️'} {family.city && `(${family.city})`}
-                        </span>
+                      <p className="mb-1.5 font-data text-[10px] font-bold uppercase tracking-wide text-maroon/50">
+                        People {isFamilyChecked ? '' : '· tap to invite only some'}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {family.family_members.map(member => {
+                          const on = !!attendanceMap[`${family.id}-${member.id}`]
+                          return (
+                            <button
+                              key={member.id}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() => handleMemberToggle(family.id, member.id, !on)}
+                              className={`inline-flex min-h-8 items-center gap-1 rounded-full border px-2.5 font-data text-xs font-semibold transition-colors ${on ? 'border-mehendi bg-mehendi text-white' : 'border-marigold/30 bg-white text-maroon hover:bg-marigold/10'}`}
+                            >
+                              {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3 opacity-60" />}
+                              {member.name}
+                              {member.relation_to_head && <span className={`font-normal ${on ? 'text-white/75' : 'text-maroon/45'}`}>· {member.relation_to_head}</span>}
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
-                  </div>
-                  {isFamilyChecked && (
-                    <span className="text-[10px] bg-mehendi/10 text-mehendi px-2 py-0.5 rounded-full font-data flex items-center font-medium">
-                      <UserCheck className="w-3 h-3 mr-0.5" /> Invited
-                    </span>
                   )}
-                </div>
 
-                {/* Per-function headcount (family-level invites) */}
-                {isFamilyChecked && (() => {
-                  const hc = stats.byFamily[family.id]
-                  const current = rsvp[family.id] || 'invited'
-                  return (
-                    <div className="bg-mehendi/5 rounded-lg p-3 border border-mehendi/15 space-y-3">
-                      <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="RSVP">
-                        <span className="text-[10px] uppercase font-bold text-maroon/60 mr-1">RSVP</span>
-                        {(['invited', 'confirmed', 'declined'] as RsvpStatus[]).map(status => (
-                          <button
-                            key={status}
-                            type="button"
-                            role="radio"
-                            aria-checked={current === status}
-                            onClick={() => handleRsvpChange(family.id, status)}
-                            className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-                              current === status
-                                ? status === 'confirmed' ? 'bg-mehendi text-white border-mehendi' : status === 'declined' ? 'bg-rust-red text-white border-rust-red' : 'bg-maroon text-ivory border-maroon'
-                                : 'bg-white text-maroon/70 border-marigold/30 hover:bg-marigold/10'
-                            }`}
-                          >
-                            {status === 'confirmed' ? '✅ ' : status === 'declined' ? '✖ ' : '✉️ '}{RSVP_LABELS[status]}
-                          </button>
+                  {isFamilyChecked && giftRules.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 font-data text-[10px] font-bold uppercase tracking-wide text-maroon/50">Gifts for this family · blank = 1</p>
+                      <div className="flex flex-wrap gap-3">
+                        {giftRules.map(rule => (
+                          <label key={rule.id} className="flex items-center gap-2 font-data text-xs font-semibold text-maroon">
+                            <span className="max-w-[9rem] truncate" title={`${rule.rule_name} (₹${Number(rule.amount).toLocaleString('en-IN')} each)`}>🎁 {rule.rule_name}</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              placeholder="1"
+                              disabled={!canEditGifts}
+                              value={giftQty[giftKey(rule.id, family.id)] ?? ''}
+                              onChange={e => handleGiftQtyChange(rule.id, family.id, e.target.value)}
+                              className="h-8 w-16 border-marigold/40 bg-white text-xs"
+                            />
+                          </label>
                         ))}
                       </div>
-                      {current !== 'declined' && (
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="text-xs font-semibold text-maroon mr-auto">
-                          👥 Coming to {func.name}
-                          <span className="block text-[10px] font-normal text-maroon/50">
-                            Leave blank to use their usual {hc?.autoAdults ?? family.expected_adults_count ?? 1} adults / {hc?.autoKids ?? family.expected_kids_count ?? 0} kids
-                          </span>
-                        </div>
-                        <div className="space-y-1 w-20">
-                          <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${family.id}-adults`}>Adults</label>
-                          <Input
-                            id={`${family.id}-adults`}
-                            type="number"
-                            min={0}
-                            placeholder={String(hc?.autoAdults ?? '')}
-                            value={headcounts[family.id]?.adults ?? ''}
-                            onChange={(e) => handleHeadcountChange(family.id, 'adults', e.target.value)}
-                            className="h-7 text-xs bg-white border-marigold/30"
-                          />
-                        </div>
-                        <div className="space-y-1 w-20">
-                          <label className="text-[10px] uppercase font-bold text-maroon/60" htmlFor={`${family.id}-kids`}>Kids</label>
-                          <Input
-                            id={`${family.id}-kids`}
-                            type="number"
-                            min={0}
-                            placeholder={String(hc?.autoKids ?? '')}
-                            value={headcounts[family.id]?.kids ?? ''}
-                            onChange={(e) => handleHeadcountChange(family.id, 'kids', e.target.value)}
-                            className="h-7 text-xs bg-white border-marigold/30"
-                          />
-                        </div>
-                      </div>
-                      )}
-                    </div>
-                  )
-                })()}
-
-                {/* Gift quantities (per-family return gifts like bhaji boxes) */}
-                {isFamilyChecked && giftRules.length > 0 && (
-                  <div className="flex flex-wrap items-end gap-3 bg-marigold/5 rounded-lg p-3 border border-marigold/10">
-                    <div className="text-xs font-semibold text-maroon mr-auto">
-                      🎁 Gifts for this family
-                      <span className="block text-[10px] font-normal text-maroon/50">Blank = 1 each</span>
-                    </div>
-                    {giftRules.map(rule => (
-                      <div key={rule.id} className="space-y-1 w-24">
-                        <label className="text-[10px] uppercase font-bold text-maroon/60 block truncate" htmlFor={`${family.id}-${rule.id}`} title={`${rule.rule_name} (₹${Number(rule.amount).toLocaleString('en-IN')} each)`}>
-                          {rule.rule_name}
-                        </label>
-                        <Input
-                          id={`${family.id}-${rule.id}`}
-                          type="number"
-                          min={0}
-                          placeholder="1"
-                          disabled={!canEditGifts}
-                          value={giftQty[giftKey(rule.id, family.id)] ?? ''}
-                          onChange={(e) => handleGiftQtyChange(rule.id, family.id, e.target.value)}
-                          className="h-7 text-xs bg-white border-marigold/30"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Room Needs Section */}
-                <div className="bg-marigold/5 rounded-lg p-3 border border-marigold/10 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-maroon flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox"
-                        checked={roomsState[family.id]?.needs_room || false}
-                        onChange={(e) => handleRoomChange(family.id, 'needs_room', e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-marigold/50 text-maroon focus:ring-maroon accent-maroon mr-2 cursor-pointer"
-                      />
-                      🏨 Requires Accommodation
-                    </label>
-                  </div>
-                  
-                  {roomsState[family.id]?.needs_room && (
-                    <div className="flex items-center gap-3 pl-5 pt-1 animate-in fade-in slide-in-from-top-1">
-                      <div className="space-y-1 w-1/3">
-                        <label className="text-[10px] uppercase font-bold text-maroon/60">Rooms Needed</label>
-                        <Input 
-                          type="number" 
-                          min={1}
-                          value={roomsState[family.id]?.rooms_assigned || ''}
-                          onChange={(e) => handleRoomChange(family.id, 'rooms_assigned', parseInt(e.target.value) || 0)}
-                          className="h-7 text-xs bg-white border-marigold/30"
-                        />
-                      </div>
-                      <div className="space-y-1 w-2/3">
-                        <label className="text-[10px] uppercase font-bold text-maroon/60">Room Number(s) Assigned</label>
-                        <Input 
-                          type="text" 
-                          placeholder="e.g. 101, 102"
-                          value={roomsState[family.id]?.room_numbers || ''}
-                          onChange={(e) => handleRoomChange(family.id, 'room_numbers', e.target.value)}
-                          className="h-7 text-xs bg-white border-marigold/30"
-                        />
-                      </div>
                     </div>
                   )}
-                </div>
 
-                {/* Family Members Checklist */}
-                {family.family_members.length === 0 ? (
-                  <p className="text-xs text-maroon/40 italic pl-6">No members added to this family card yet.</p>
-                ) : (
-                  <div className="space-y-2 pl-6">
-                    {family.family_members.map(member => {
-                      const memberKey = `${family.id}-${member.id}`
-                      const isMemberChecked = attendanceMap[memberKey] || false
-
-                      return (
-                        <div key={member.id} className="flex items-center space-x-2">
-                          <input 
-                            type="checkbox"
-                            id={member.id}
-                            checked={isMemberChecked}
-                            disabled={loading[memberKey]}
-                            onChange={(e) => handleMemberToggle(family.id, member.id, e.target.checked)}
-                            className="h-3.5 w-3.5 rounded border-marigold/50 text-maroon focus:ring-maroon cursor-pointer accent-maroon"
-                          />
-                          <label htmlFor={member.id} className="text-xs font-data text-maroon/80 cursor-pointer">
-                            {member.name} <span className="text-[10px] text-maroon/40">({member.relation_to_head || 'Member'})</span>
-                          </label>
-                        </div>
-                      )
-                    })}
+                  <div>
+                    <label className="flex cursor-pointer items-center gap-2 font-data text-xs font-semibold text-maroon">
+                      <input
+                        type="checkbox"
+                        checked={room?.needs_room || false}
+                        onChange={e => handleRoomChange(family.id, 'needs_room', e.target.checked)}
+                        className="h-4 w-4 cursor-pointer accent-maroon"
+                      />
+                      🏨 Needs a room
+                    </label>
+                    {room?.needs_room && (
+                      <div className="mt-2 flex gap-3 pl-6">
+                        <label className="w-24 space-y-1">
+                          <span className="block font-data text-[10px] font-bold uppercase text-maroon/50">Rooms</span>
+                          <Input type="number" min={1} value={room.rooms_assigned || ''} onChange={e => handleRoomChange(family.id, 'rooms_assigned', parseInt(e.target.value) || 0)} className="h-8 border-marigold/40 bg-white text-xs" />
+                        </label>
+                        <label className="flex-1 space-y-1">
+                          <span className="block font-data text-[10px] font-bold uppercase text-maroon/50">Room numbers</span>
+                          <Input type="text" placeholder="e.g. 101, 102" value={room.room_numbers || ''} onChange={e => handleRoomChange(family.id, 'room_numbers', e.target.value)} className="h-8 border-marigold/40 bg-white text-xs" />
+                        </label>
+                      </div>
+                    )}
                   </div>
-                )}
 
-              </div>
-            )
-          })
-        )}
-        {hasUnsavedChanges && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-maroon text-ivory px-6 py-3 rounded-full shadow-[0_4px_20px_rgba(110,24,24,0.4)] flex items-center gap-4 z-50 animate-in slide-in-from-bottom-5 font-bold border border-marigold/30">
-            <span className="text-sm whitespace-nowrap">⚠️ You have unsaved changes!</span>
-            <div className="flex items-center gap-2">
-              <Button 
-                size="sm" 
-                variant="outline"
-                onClick={() => handleSaveChanges(false)} 
-                disabled={saving}
-                className="border-marigold text-ivory hover:bg-marigold/10 hover:text-ivory h-8 font-semibold rounded-full px-4 transition-transform active:scale-95 bg-transparent"
-              >
-                {saving ? 'Saving...' : 'Save & Continue'}
-              </Button>
-              <Button 
-                size="sm" 
-                onClick={() => handleSaveChanges(true)} 
-                disabled={saving}
-                className="bg-marigold text-maroon hover:bg-marigold/90 h-8 font-semibold rounded-full px-6 transition-transform active:scale-95"
-              >
-                {saving ? 'Saving...' : 'Save & Exit'}
-              </Button>
-            </div>
+                  {!st.invited && family.family_members.length === 0 && (
+                    <p className="font-data text-xs text-maroon/50">No people listed for this family yet. Tap + to invite the whole family.</p>
+                  )}
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {hasUnsavedChanges && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-marigold/30 bg-maroon px-4 py-3 shadow-[0_-6px_24px_rgba(58,11,32,0.25)] md:bottom-4 md:left-1/2 md:right-auto md:w-[36rem] md:-translate-x-1/2 md:rounded-full md:border">
+          <div className="mx-auto flex max-w-2xl items-center gap-2">
+            <p className="min-w-0 flex-1 font-data text-xs font-semibold text-ivory">
+              Unsaved changes
+              <span className="block font-normal text-ivory/70">{totalInvited} guests · {familiesInvited} families</span>
+            </p>
+            <Button size="sm" variant="outline" onClick={() => handleSaveChanges(false)} disabled={saving} className="h-9 rounded-full border-[#F2C46D]/60 bg-transparent px-4 font-semibold text-ivory hover:bg-white/10 hover:text-ivory">
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button size="sm" onClick={() => handleSaveChanges(true)} disabled={saving} className="h-9 rounded-full bg-[#F2C46D] px-4 font-semibold text-[#3A0B20] hover:bg-[#F2C46D]/90">
+              Save &amp; done
+            </Button>
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   )
 }
