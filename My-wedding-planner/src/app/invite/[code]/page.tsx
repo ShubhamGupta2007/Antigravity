@@ -72,7 +72,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
         <section className="relative flex min-h-[100svh] flex-col items-center overflow-hidden bg-[#3A0B20] px-6 text-center text-[#FFF6E9]">
           <Mandala className="inv-mandala pointer-events-none absolute left-1/2 top-[11%] w-[700px] max-w-none -translate-x-1/2 opacity-20" />
           <MandalaStar className="inv-mandala-back pointer-events-none absolute left-1/2 top-[32%] w-[340px] max-w-none -translate-x-1/2 opacity-25" />
-          <Fireworks />
+          <Fireworks pauseWhen="[data-inv-envelope]" />
           <Toran />
           <Petals />
 

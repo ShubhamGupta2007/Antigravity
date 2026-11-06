@@ -53,12 +53,13 @@ export default function Envelope({ code, title, bride, groom }: { code: string; 
   return (
     <div
       role="dialog"
+      data-inv-envelope={stage === 'gone' ? undefined : 'open'}
       aria-modal={stage !== 'gone'}
       aria-label="Your invitation"
       className={`inv-envelope-out fixed inset-0 z-50 flex flex-col items-center overflow-hidden bg-[#3A0B20] px-5 text-[#FFF6E9] ${stage === 'gone' ? 'invisible opacity-0' : 'visible opacity-100'}`}
     >
       <NightSky />
-      <Fireworks ref={fireworks} ambient={stage !== 'gone'} />
+      {stage !== 'gone' && <Fireworks ref={fireworks} />}
       <LotusPond />
 
       <GaneshJi className="inv-ganesh relative mt-[3vh] h-[clamp(64px,11vh,92px)] w-auto" />
