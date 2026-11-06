@@ -134,7 +134,7 @@ function totals(families: Family[], state: FnState) {
     total: hc.total,
     lifafa: g.lifafaTotal,
     return_gifts: g.returnGiftTotal,
-    items: g.rules.filter(r => r.rule.type === 'return_gift').map(r => `${r.rule.rule_name}: ${r.count} × ${rupees(Number(r.rule.amount))}`)
+    items: g.rules.filter(r => r.rule.type !== 'lifafa').map(r => `${r.rule.rule_name}: ${r.count} × ${rupees(Number(r.rule.amount))}`)
   }
 }
 
@@ -245,7 +245,7 @@ type PlanRow = {
   shagun_received?: { amount?: number | null; item?: string | null; note?: string | null }
   note?: string | null
 }
-type GiftItem = { name: string; type?: 'return_gift' | 'lifafa'; unit_price?: number }
+type GiftItem = { name: string; type?: 'return_gift' | 'bhaji' | 'gift' | 'lifafa'; unit_price?: number }
 type Plan = { source?: string; function_id?: string | null; gift_items?: GiftItem[]; rows: PlanRow[] }
 
 const memberName = (m: MemberInput) => (typeof m === 'string' ? m : m.name).trim()
@@ -272,7 +272,7 @@ async function cmdApply() {
   const targets = new Map<string, string>()
 
   // Gift items: plan.gift_items (create/update) or existing rules on the function, matched by name
-  const giftItems = new Map<string, { name: string; type: 'return_gift' | 'lifafa'; price?: number; rule?: GiftingRule }>()
+  const giftItems = new Map<string, { name: string; type: 'return_gift' | 'bhaji' | 'gift' | 'lifafa'; price?: number; rule?: GiftingRule }>()
   for (const gi of plan.gift_items || []) {
     if (!fnId) { problems.push(`gift item "${gi.name}": gift items need a function_id`); continue }
     if (gi.unit_price !== undefined && !(typeof gi.unit_price === 'number' && gi.unit_price >= 0)) problems.push(`gift item "${gi.name}": unit_price must be a number ≥ 0`)

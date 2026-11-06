@@ -15,6 +15,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `13_tasks_links.sql` | tasks linked to functions; every due payment becomes a task (kept in step automatically) |
 | `14_guest_invitations.sql` | personal guest invitations: invite link per family, phone check, guest-facing function details, RSVP from the invitation |
 | `15_ritual_activities.sql` | ritual entries can be something done (tilak, chunni chadhana), not only something given |
+| `16_gifts.sql` | gift types (lifafa, bhaji, gift item, return gift), prices per circle and per family, gifts for chosen people, and the Give & track checklist |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.

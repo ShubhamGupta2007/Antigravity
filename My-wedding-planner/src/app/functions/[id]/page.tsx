@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronRight } from 'lucide-react'
 import { differenceInCalendarDays, format } from 'date-fns'
 import DeleteFunctionButton from './DeleteFunctionButton'
 import FunctionGiftingRules from './FunctionGiftingRules'
+import FunctionGiftHandover, { type HandoverRow } from './FunctionGiftHandover'
 import FunctionSchedule from './FunctionSchedule'
 import FunctionRituals, { type Ritual } from './FunctionRituals'
 import type { RitualPerson } from './RitualItemForm'
@@ -14,6 +15,7 @@ import { TaskList, type Task } from '@/components/TaskList'
 import FunctionGuestDetails from './FunctionGuestDetails'
 import FunctionReplies, { type GuestMessage, type ReplyFamily } from './FunctionReplies'
 import {
+  computeGifting,
   DEFAULT_KID_AGE,
   familiesFromAttendance,
   functionHeadcount,
@@ -36,7 +38,9 @@ export default async function FunctionDetailPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const resolvedParams = await params
-  const viewParam = (await searchParams).view
+  const sp = await searchParams
+  const viewParam = sp.view
+  const giftTab = sp.tab === 'give' ? 'give' : 'plan'
   const supabase = await createClient()
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -117,15 +121,17 @@ export default async function FunctionDetailPage({
     console.error('Error fetching function_attendance:', attendanceError)
   }
 
-  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes, shagunRes, tasksRes] = await Promise.all([
+  const [giftingRulesRes, overridesRes, segmentsRes, linkedCategoryRes, ritualsRes, giftCountsRes, shagunRes, tasksRes, handoverRes] = await Promise.all([
     supabase.from('function_gifting_rules').select('*').eq('function_id', func.id).order('created_at'),
     supabase.from('function_gift_overrides').select('*').eq('function_id', func.id),
     supabase.from('function_segments').select('*').eq('function_id', func.id),
     supabase.from('categories').select('id, name').eq('function_id', func.id).order('name').limit(1),
     supabase.from('function_rituals').select('*, ritual_items (*)').eq('function_id', func.id).order('sort_order'),
-    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', func.id),
+    supabase.from('function_gift_counts').select('*').eq('function_id', func.id),
     supabase.from('shagun_received').select('*').eq('function_id', func.id).order('created_at'),
-    supabase.from('tasks').select('*').eq('function_id', func.id).order('deadline', { ascending: true, nullsFirst: false })
+    supabase.from('tasks').select('*').eq('function_id', func.id).order('deadline', { ascending: true, nullsFirst: false }),
+    // Hand-over ticks (needs 16_gifts.sql; the tab says so without it)
+    supabase.from('function_gift_handover').select('family_id, line_key, given_at').eq('function_id', func.id)
   ])
   // Not done first, then by deadline (already ordered)
   const functionTasks = ((tasksRes.data || []) as Task[]).sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done'))
@@ -307,6 +313,15 @@ export default async function FunctionDetailPage({
   const ritualTotal = Number(func.planned_ritual_total) || 0
 
   const giftingRules = (giftingRulesRes.data || []) as GiftingRule[]
+  const giftOverrides = (overridesRes.data || []) as GiftOverride[]
+  const giftCounts = (giftCountsRes.data || []) as GiftCount[]
+  const handoverRows = (handoverRes.data || []) as HandoverRow[]
+  const handoverReady = !handoverRes.error
+  const giftPlan = computeGifting(giftingRules, giftOverrides, planningFamilies, attendanceRows, kidAge, giftCounts)
+  const givenKeys = new Set(handoverRows.map(h => `${h.family_id}:${h.line_key}`))
+  const giftGivenAmount = giftPlan.lines.filter(l => givenKeys.has(`${l.familyId}:${l.key}`)).reduce((s, l) => s + l.total, 0)
+  const giftFamilies = new Set(giftPlan.lines.map(l => l.familyId))
+  const giftFamiliesLeft = Array.from(giftFamilies).filter(fid => giftPlan.lines.some(l => l.familyId === fid && !givenKeys.has(`${fid}:${l.key}`))).length
 
   const shagunEntries = (shagunRes.data || []) as ShagunEntry[]
   const shagunTotal = shagunEntries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
@@ -366,7 +381,11 @@ export default async function FunctionDetailPage({
     {
       key: 'gifts', icon: '🎁', title: 'Lifafa & Gifts',
       value: plannedGifting ? shortRupees(plannedGifting) : '—',
-      sub: giftingRules.length ? `${giftingRules.length} rule${giftingRules.length === 1 ? '' : 's'}` : 'Set lifafas and return gifts'
+      sub: !giftingRules.length
+        ? 'Lifafas, bhaji, gifts'
+        : handoverReady && giftGivenAmount > 0
+          ? `${shortRupees(giftGivenAmount)} given · ${giftFamiliesLeft} families left`
+          : `${giftingRules.length} item${giftingRules.length === 1 ? '' : 's'} planned`
     },
     {
       key: 'budget', icon: '💰', title: 'Budget',
@@ -645,13 +664,43 @@ export default async function FunctionDetailPage({
         )
       case 'gifts':
         return (
+          <div className="space-y-4">
+            <div className="inline-flex rounded-full border border-marigold/30 bg-white p-0.5 font-data text-xs" role="tablist" aria-label="Lifafa and gifts">
+              <Link href={href('gifts')} role="tab" aria-selected={giftTab === 'plan'} className={`rounded-full px-4 py-1.5 ${giftTab === 'plan' ? 'bg-maroon font-semibold text-ivory' : 'text-maroon/70 hover:text-maroon'}`}>
+                📋 Plan
+              </Link>
+              <Link href={`${href('gifts')}&tab=give`} role="tab" aria-selected={giftTab === 'give'} className={`rounded-full px-4 py-1.5 ${giftTab === 'give' ? 'bg-maroon font-semibold text-ivory' : 'text-maroon/70 hover:text-maroon'}`}>
+                ✅ Give &amp; track
+              </Link>
+            </div>
+            {giftTab === 'give' ? (
+              handoverReady ? (
+                <FunctionGiftHandover
+                  functionId={func.id}
+                  canTick={canEditSchedule}
+                  canChange={isManager}
+                  families={planningFamilies}
+                  attendance={attendanceRows}
+                  rules={giftingRules}
+                  overrides={giftOverrides}
+                  initialCounts={giftCounts}
+                  kidAge={kidAge}
+                  rituals={ritualList}
+                  initialHandover={handoverRows}
+                />
+              ) : (
+                <p role="alert" className="rounded-xl border border-rust-red/30 bg-rust-red/10 p-3 font-data text-xs text-rust-red">
+                  Run <b>supabase/16_gifts.sql</b> in the Supabase SQL editor to tick off lifafas and gifts as they&apos;re given.
+                </p>
+              )
+            ) : (
           <FunctionGiftingRules
             functionId={func.id}
             initialKidAge={kidAge}
             canEdit={isManager}
             initialRules={giftingRules}
-            initialOverrides={(overridesRes.data || []) as GiftOverride[]}
-            giftCounts={(giftCountsRes.data || []) as GiftCount[]}
+            initialOverrides={giftOverrides}
+            giftCounts={giftCounts}
             families={planningFamilies}
             attendance={attendanceRows}
             storedLifafaTotal={Number(func.planned_lifafa_total) || 0}
@@ -659,6 +708,8 @@ export default async function FunctionDetailPage({
             linkedCategory={linkedCategoryRes.data?.[0] || null}
             functionBudget={maxBudget}
           />
+            )}
+          </div>
         )
       case 'budget':
         return budgetSection

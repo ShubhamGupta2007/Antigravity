@@ -56,7 +56,7 @@ type HeadcountDraft = { adults: string; kids: string }
 type RoomState = { needs_room: boolean; rooms_assigned: number; room_numbers: string }
 
 type GiftRuleLite = { id: string; rule_name: string; amount: number }
-type GiftCountLite = { rule_id: string; family_id: string; quantity: number }
+type GiftCountLite = { rule_id: string; family_id: string; quantity: number | null; unit_amount?: number | null }
 
 type FunctionLite = { id: string; name: string; kid_age_threshold?: number | null }
 
@@ -134,7 +134,7 @@ export default function ManageInvitesClient({
   const giftKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
   const [giftQty, setGiftQty] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {}
-    initialGiftCounts.forEach(c => { map[giftKey(c.rule_id, c.family_id)] = String(c.quantity) })
+    initialGiftCounts.forEach(c => { if (c.quantity !== null && c.quantity !== undefined) map[giftKey(c.rule_id, c.family_id)] = String(c.quantity) })
     return map
   })
   const handleGiftQtyChange = (ruleId: string, familyId: string, value: string) => {
@@ -298,8 +298,12 @@ export default function ManageInvitesClient({
             const key = giftKey(rule.id, f.id)
             const initial = initialGiftCounts.find(c => c.rule_id === rule.id && c.family_id === f.id)
             const next = parseCount(giftQty[key])
-            if (next === null && initial) {
-              const { error } = await supabase.from('function_gift_counts').delete().eq('rule_id', rule.id).eq('family_id', f.id)
+            const hasPrice = initial?.unit_amount !== null && initial?.unit_amount !== undefined
+            if (next === null && initial && initial.quantity !== null) {
+              // Keep the row when this family has its own price; only the quantity goes back to usual
+              const { error } = hasPrice
+                ? await supabase.from('function_gift_counts').update({ quantity: null }).eq('rule_id', rule.id).eq('family_id', f.id)
+                : await supabase.from('function_gift_counts').delete().eq('rule_id', rule.id).eq('family_id', f.id)
               if (error) throw error
             } else if (next !== null && next !== initial?.quantity) {
               const { error } = await supabase

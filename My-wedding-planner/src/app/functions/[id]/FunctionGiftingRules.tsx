@@ -10,10 +10,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   computeGifting,
+  GIFT_KINDS,
+  invitedMembers,
   saveGiftingPlan,
   TARGET_GROUP_LABELS,
   TIER_LABELS,
   type GiftCount,
+  type GiftKind,
+  type Tier,
   type GiftingRule,
   type GiftOverride,
   type PlanningAttendance,
@@ -21,6 +25,10 @@ import {
 } from '@/lib/functionPlanning'
 
 type RuleInput = Omit<GiftingRule, 'id' | 'function_id'>
+type Person = { id: string; name: string; family: string }
+
+const TIERS: Tier[] = ['tier_1', 'tier_2', 'tier_3']
+const TIER_SHORT: Record<Tier, string> = { tier_1: 'Hosts', tier_2: 'Close', tier_3: 'Extended' }
 
 const PRESETS: RuleInput[] = [
   { rule_name: 'Close Circle – Adults', type: 'lifafa', distribution: 'per_person', amount: 1100, target_side: 'both', target_tier: 'tier_2', target_gender: 'Adults' },
@@ -69,6 +77,29 @@ export default function FunctionGiftingRules({
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [syncState, setSyncState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  // Rule form: the parts that change what else is shown
+  const [kind, setKind] = useState<GiftKind>('lifafa')
+  const [perCircle, setPerCircle] = useState(false)
+  const [tierPrices, setTierPrices] = useState<Record<Tier, string>>({ tier_1: '', tier_2: '', tier_3: '' })
+  const [forPeople, setForPeople] = useState(false)
+  const [chosen, setChosen] = useState<string[]>([])
+  const [peopleQuery, setPeopleQuery] = useState('')
+
+  const openRuleForm = (editing: GiftingRule | null) => {
+    setSubmitError(null)
+    setKind(editing?.type || 'lifafa')
+    const ta = editing?.tier_amounts || null
+    setPerCircle(!!ta && Object.keys(ta).length > 0)
+    setTierPrices({
+      tier_1: ta?.tier_1 !== undefined ? String(ta.tier_1) : '',
+      tier_2: ta?.tier_2 !== undefined ? String(ta.tier_2) : '',
+      tier_3: ta?.tier_3 !== undefined ? String(ta.tier_3) : ''
+    })
+    setForPeople((editing?.target_member_ids?.length || 0) > 0)
+    setChosen(editing?.target_member_ids || [])
+    setPeopleQuery('')
+    setRuleModal({ open: true, editing })
+  }
 
   const summary = useMemo(
     () => computeGifting(rules, overrides, families, attendance, kidAge, giftCounts),
@@ -101,6 +132,15 @@ export default function FunctionGiftingRules({
   }, [summary, supabase, functionId])
 
   const invitedFamilies = families.filter(f => attendance.some(a => a.family_id === f.id))
+  // Everyone invited by name, for "only these people" gifts (jiju's suit…)
+  const people: Person[] = useMemo(
+    () =>
+      families
+        .flatMap(f => invitedMembers(f, attendance).map(m => ({ id: m.id, name: m.name || 'Guest', family: familyLabel(f.family_name) })))
+        .sort((a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name)),
+    [families, attendance]
+  )
+  const personName = (id: string) => people.find(p => p.id === id)?.name
 
   // ---- Rules -------------------------------------------------------------
   const handleDeleteRule = async (id: string) => {
@@ -116,15 +156,31 @@ export default function FunctionGiftingRules({
     e.preventDefault()
     setLoading(true)
     const formData = new FormData(e.currentTarget)
+    if (forPeople && chosen.length === 0) {
+      setSubmitError('Pick at least one person, or switch back to "By side & circle".')
+      setLoading(false)
+      return
+    }
+    const tierAmounts: Partial<Record<Tier, number>> = {}
+    if (perCircle) TIERS.forEach(t => { if (tierPrices[t].trim() !== '') tierAmounts[t] = Number(tierPrices[t]) })
+    const usesNewColumns = kind !== 'lifafa' && kind !== 'return_gift'
+    const extras = Object.keys(tierAmounts).length > 0 || forPeople || usesNewColumns || ruleModal.editing?.tier_amounts || ruleModal.editing?.target_member_ids
     const payload = {
       function_id: functionId,
       rule_name: String(formData.get('rule_name') || '').trim(),
-      type: formData.get('type') as GiftingRule['type'],
+      type: kind,
       distribution: formData.get('distribution') as GiftingRule['distribution'],
       amount: Number(formData.get('amount')),
-      target_side: formData.get('target_side') as GiftingRule['target_side'],
-      target_tier: formData.get('target_tier') as GiftingRule['target_tier'],
-      target_gender: formData.get('target_gender') as GiftingRule['target_gender']
+      target_side: forPeople ? 'both' : (formData.get('target_side') as GiftingRule['target_side']),
+      target_tier: forPeople ? 'all' : (formData.get('target_tier') as GiftingRule['target_tier']),
+      target_gender: forPeople ? 'All' : (formData.get('target_gender') as GiftingRule['target_gender']),
+      // Sent only when used, so plain lifafa rules still save before 16_gifts.sql is run
+      ...(extras
+        ? {
+            tier_amounts: Object.keys(tierAmounts).length > 0 ? tierAmounts : null,
+            target_member_ids: forPeople ? chosen : null
+          }
+        : {})
     }
     const editing = ruleModal.editing
     const query = editing
@@ -132,7 +188,9 @@ export default function FunctionGiftingRules({
       : supabase.from('function_gifting_rules').insert(payload).select().single()
     const { data, error } = await query
     if (error) {
-      setSubmitError(error.message)
+      setSubmitError(/tier_amounts|target_member_ids|check constraint/.test(error.message)
+        ? `${error.message}. Run supabase/16_gifts.sql in the Supabase SQL editor to use gift types, circle prices and chosen people.`
+        : error.message)
     } else if (data) {
       setRules(prev => (editing ? prev.map(r => (r.id === editing.id ? data : r)) : [...prev, data]))
       setRuleModal({ open: false, editing: null })
@@ -223,7 +281,7 @@ export default function FunctionGiftingRules({
             <Button size="sm" variant="outline" disabled={loading} onClick={() => { setSubmitError(null); setOverrideModal({ open: true, editing: null }) }} className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
               Family Exception
             </Button>
-            <Button size="sm" disabled={loading} onClick={() => { setSubmitError(null); setRuleModal({ open: true, editing: null }) }} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
+            <Button size="sm" disabled={loading} onClick={() => openRuleForm(null)} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
               <Plus className="w-4 h-4 mr-1" /> Add Rule
             </Button>
           </div>
@@ -265,30 +323,44 @@ export default function FunctionGiftingRules({
           {summary.rules.map(({ rule, count, total, customFamilies }) => (
             <div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-marigold/30 rounded-xl">
               <div className="min-w-0">
-                <h3 className="font-semibold text-sm text-maroon">{rule.rule_name}</h3>
+                <h3 className="font-semibold text-sm text-maroon">{(GIFT_KINDS[rule.type] || GIFT_KINDS.gift).icon} {rule.rule_name}</h3>
                 <div className="text-[10px] text-maroon/60 font-data flex flex-wrap gap-x-2 mt-1">
-                  <span>{rule.type === 'lifafa' ? 'Lifafa' : 'Return gift'}</span>
+                  <span>{(GIFT_KINDS[rule.type] || GIFT_KINDS.gift).label}</span>
                   <span>•</span>
-                  <span>{rule.target_side === 'both' ? 'Both sides' : rule.target_side === 'groom' ? "Groom's side" : "Bride's side"}</span>
+                  {(rule.target_member_ids?.length || 0) > 0 ? (
+                    <span className="font-semibold text-maroon/80">For {rule.target_member_ids!.map(id => personName(id) || 'someone not invited').join(', ')}</span>
+                  ) : (
+                    <>
+                      <span>{rule.target_side === 'both' ? 'Both sides' : rule.target_side === 'groom' ? "Groom's side" : "Bride's side"}</span>
+                      <span>•</span>
+                      <span>{TIER_LABELS[rule.target_tier]}</span>
+                      <span>•</span>
+                      <span>{rule.target_gender === 'Kids' ? `Kids (under ${kidAge})` : TARGET_GROUP_LABELS[rule.target_gender]}</span>
+                    </>
+                  )}
                   <span>•</span>
-                  <span>{TIER_LABELS[rule.target_tier]}</span>
-                  <span>•</span>
-                  <span>{rule.target_gender === 'Kids' ? `Kids (under ${kidAge})` : TARGET_GROUP_LABELS[rule.target_gender]}</span>
+                  <span>{rule.distribution === 'per_family' ? 'per family' : 'per person'}</span>
                 </div>
+                {rule.tier_amounts && Object.keys(rule.tier_amounts).length > 0 && (
+                  <p className="text-[10px] font-data text-maroon/60 mt-0.5">
+                    {TIERS.filter(t => rule.tier_amounts?.[t] !== undefined).map(t => `${TIER_SHORT[t]} ${rupees(Number(rule.tier_amounts![t]))}`).join(' · ')} · others {rupees(rule.amount)}
+                  </p>
+                )}
                 {customFamilies > 0 && (
-                  <p className="text-[10px] text-mehendi font-data mt-0.5">Set quantity for {customFamilies} {customFamilies === 1 ? 'family' : 'families'}</p>
+                  <p className="text-[10px] text-mehendi font-data mt-0.5">Changed for {customFamilies} {customFamilies === 1 ? 'family' : 'families'}</p>
                 )}
               </div>
               <div className="flex items-center gap-4 ml-auto">
                 <div className="text-right">
                   <div className="text-xs text-maroon/70 font-data">
-                    {count} {customFamilies > 0 ? 'in total' : rule.distribution === 'per_family' ? (count === 1 ? 'family' : 'families') : (count === 1 ? 'person' : 'people')} × {rupees(rule.amount)}
+                    {count} {customFamilies > 0 ? 'in total' : rule.distribution === 'per_family' ? (count === 1 ? 'family' : 'families') : (count === 1 ? 'person' : 'people')}
+                    {count > 0 && total !== count * Number(rule.amount) ? ' · prices vary' : ` × ${rupees(rule.amount)}`}
                   </div>
                   <div className="text-sm font-bold text-maroon">{rupees(total)}</div>
                 </div>
                 {canEdit && (
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" aria-label="Edit rule" onClick={() => { setSubmitError(null); setRuleModal({ open: true, editing: rule }) }} className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8">
+                    <Button variant="ghost" size="icon" aria-label="Edit rule" onClick={() => openRuleForm(rule)} className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8">
                       <Edit2 className="w-4 h-4" />
                     </Button>
                     <Button variant="ghost" size="icon" aria-label="Delete rule" disabled={loading} onClick={() => handleDeleteRule(rule.id)} className="text-rust-red/50 hover:text-rust-red hover:bg-rust-red/10 h-8 w-8">
@@ -331,14 +403,13 @@ export default function FunctionGiftingRules({
 
           {/* Totals + budget link */}
           <div className="mt-4 pt-3 border-t border-marigold/20 bg-marigold/10 p-3 rounded-lg space-y-1.5">
-            <div className="flex justify-between text-xs font-data text-maroon/80">
-              <span>Lifafas</span><span className="font-semibold">{rupees(summary.lifafaTotal)}</span>
-            </div>
-            {summary.returnGiftTotal > 0 && (
-              <div className="flex justify-between text-xs font-data text-maroon/80">
-                <span>Return gifts</span><span className="font-semibold">{rupees(summary.returnGiftTotal)}</span>
-              </div>
-            )}
+            {(Object.keys(GIFT_KINDS) as GiftKind[])
+              .filter(k => k === 'lifafa' || summary.byKind[k] > 0)
+              .map(k => (
+                <div key={k} className="flex justify-between text-xs font-data text-maroon/80">
+                  <span>{GIFT_KINDS[k].icon} {GIFT_KINDS[k].label}</span><span className="font-semibold">{rupees(summary.byKind[k])}</span>
+                </div>
+              ))}
             <div className="flex justify-between items-center pt-1 border-t border-marigold/20">
               <span className="font-semibold text-maroon text-sm">Planned gifting</span>
               <span className="font-display font-bold text-maroon text-lg">{rupees(summary.total)}</span>
@@ -385,14 +456,25 @@ export default function FunctionGiftingRules({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs text-maroon font-semibold">Rule Name</Label>
-                  <Input name="rule_name" defaultValue={editingRule?.rule_name} placeholder="e.g. Close Circle Shagun" required className="bg-white border-marigold/50 text-sm h-10" />
+                  <Input name="rule_name" defaultValue={editingRule?.rule_name} placeholder={kind === 'lifafa' ? 'e.g. Milni shagun' : kind === 'bhaji' ? 'e.g. Bhaji box' : kind === 'gift' ? 'e.g. Suit for Jiju' : 'e.g. Silver coin'} required className="bg-white border-marigold/50 text-sm h-10" />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-maroon font-semibold">Type</Label>
-                  <select name="type" defaultValue={editingRule?.type || 'lifafa'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
-                    <option value="lifafa">Lifafa (Cash)</option>
-                    <option value="return_gift">Return Gift</option>
-                  </select>
+                <div className="space-y-1 sm:col-span-2 sm:order-first">
+                  <Label className="text-xs text-maroon font-semibold">What is it</Label>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Gift type">
+                    {(Object.keys(GIFT_KINDS) as GiftKind[]).map(k => (
+                      <button
+                        key={k}
+                        type="button"
+                        role="radio"
+                        aria-checked={kind === k}
+                        onClick={() => setKind(k)}
+                        className={`rounded-xl border p-2.5 text-left transition-colors ${kind === k ? 'border-maroon bg-maroon text-ivory' : 'border-marigold/40 bg-white text-maroon hover:bg-marigold/10'}`}
+                      >
+                        <span className="block text-sm font-semibold">{GIFT_KINDS[k].icon} {GIFT_KINDS[k].label}</span>
+                        <span className={`block text-[10px] ${kind === k ? 'text-ivory/75' : 'text-maroon/50'}`}>{GIFT_KINDS[k].hint}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-maroon font-semibold">Given</Label>
@@ -402,12 +484,65 @@ export default function FunctionGiftingRules({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs text-maroon font-semibold">Amount (₹)</Label>
-                  <Input name="amount" type="number" min={0} defaultValue={editingRule?.amount} required placeholder="1100" className="bg-white border-marigold/50 text-sm h-10" />
+                  <Label className="text-xs text-maroon font-semibold">{kind === 'lifafa' ? 'Amount (₹)' : 'Price of one (₹)'}</Label>
+                  <Input name="amount" type="number" min={0} defaultValue={editingRule?.amount} required placeholder={kind === 'lifafa' ? '1100' : '500'} className="bg-white border-marigold/50 text-sm h-10" />
+                </div>
+
+                <div className="sm:col-span-2 space-y-2 rounded-xl border border-marigold/25 bg-white p-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-maroon">
+                    <input type="checkbox" checked={perCircle} onChange={e => setPerCircle(e.target.checked)} className="h-4 w-4 accent-maroon" />
+                    Different {kind === 'lifafa' ? 'amount' : 'price'} for each circle
+                  </label>
+                  {perCircle && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {TIERS.map(t => (
+                        <label key={t} className="space-y-1">
+                          <span className="block text-[10px] font-bold uppercase text-maroon/50">{TIER_SHORT[t]}</span>
+                          <Input type="number" min={0} value={tierPrices[t]} onChange={e => setTierPrices(prev => ({ ...prev, [t]: e.target.value }))} placeholder="same" className="h-9 bg-white border-marigold/40 text-sm" />
+                        </label>
+                      ))}
+                      <p className="col-span-3 text-[10px] text-maroon/50 font-data">Leave a circle blank to use the price above. You can also change one family&apos;s price under &ldquo;Give &amp; track&rdquo;.</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-2 text-xs font-bold text-maroon/50 uppercase mt-2 border-b border-marigold/20 pb-1">Who gets it</div>
 
+                <div className="sm:col-span-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Who gets it">
+                  {([[false, '👥 By side & circle'], [true, '🙋 Only these people']] as const).map(([v, label]) => (
+                    <button key={label} type="button" role="radio" aria-checked={forPeople === v} onClick={() => setForPeople(v)}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold ${forPeople === v ? 'border-maroon bg-maroon text-ivory' : 'border-marigold/40 bg-white text-maroon hover:bg-marigold/10'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {forPeople ? (
+                  <div className="sm:col-span-2 space-y-2">
+                    {people.length === 0 ? (
+                      <p className="text-xs text-maroon/60 italic">Invite families (with their members listed) to this function first.</p>
+                    ) : (
+                      <>
+                        <Input value={peopleQuery} onChange={e => setPeopleQuery(e.target.value)} placeholder="Search names or families" aria-label="Search people" className="h-9 bg-white border-marigold/40 text-sm" />
+                        <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+                          {people
+                            .filter(p => !peopleQuery.trim() || `${p.name} ${p.family}`.toLowerCase().includes(peopleQuery.trim().toLowerCase()) || chosen.includes(p.id))
+                            .map(p => {
+                              const on = chosen.includes(p.id)
+                              return (
+                                <button key={p.id} type="button" aria-pressed={on} onClick={() => setChosen(prev => (on ? prev.filter(x => x !== p.id) : [...prev, p.id]))}
+                                  className={`rounded-full border px-2.5 py-1.5 text-xs font-semibold ${on ? 'border-mehendi bg-mehendi text-white' : 'border-marigold/30 bg-white text-maroon hover:bg-marigold/10'}`}>
+                                  {on ? '✓ ' : '+ '}{p.name}<span className={`font-normal ${on ? 'text-white/75' : 'text-maroon/45'}`}> · {p.family}</span>
+                                </button>
+                              )
+                            })}
+                        </div>
+                        <p className="text-[10px] text-maroon/50 font-data">{chosen.length} picked. Per person = one each; per family = one for each family they belong to.</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                <>
                 <div className="space-y-1">
                   <Label className="text-xs text-maroon font-semibold">Side</Label>
                   <select name="target_side" defaultValue={editingRule?.target_side || 'both'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
@@ -437,6 +572,8 @@ export default function FunctionGiftingRules({
                   </select>
                   <p className="text-[10px] text-maroon/50 font-data">Gents / Ladies / Seniors only count members whose gender or age is filled in.</p>
                 </div>
+                </>
+                )}
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setRuleModal({ open: false, editing: null })} className="border-marigold/30 text-maroon">Cancel</Button>

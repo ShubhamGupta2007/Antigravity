@@ -201,16 +201,30 @@ export function familiesFromAttendance(
 // Gifting
 // ---------------------------------------------------------------------------
 
+export type GiftKind = 'lifafa' | 'bhaji' | 'gift' | 'return_gift'
+export type Tier = 'tier_1' | 'tier_2' | 'tier_3'
+
+export const GIFT_KINDS: Record<GiftKind, { label: string; icon: string; hint: string }> = {
+  lifafa: { label: 'Lifafa', icon: '💵', hint: 'Cash in an envelope' },
+  bhaji: { label: 'Bhaji / Mithai', icon: '🍬', hint: 'Bhaji box, mithai, dry fruits' },
+  gift: { label: 'Gift item', icon: '🎁', hint: 'Shawl, suit, saree, silver coin…' },
+  return_gift: { label: 'Return gift', icon: '🛍️', hint: 'What guests take home' }
+}
+
 export type GiftingRule = {
   id: string
   function_id: string
   rule_name: string
-  type: 'lifafa' | 'return_gift'
+  type: GiftKind
   distribution: 'per_family' | 'per_person'
   amount: number
   target_side: 'groom' | 'bride' | 'both'
-  target_tier: 'tier_1' | 'tier_2' | 'tier_3' | 'all'
+  target_tier: Tier | 'all'
   target_gender: 'Male' | 'Female' | 'Kids' | 'Adults' | 'Seniors' | 'All'
+  /** A different price per circle; a circle left out uses `amount`. Needs 16_gifts.sql. */
+  tier_amounts?: Partial<Record<Tier, number>> | null
+  /** Only these people get it (side / circle / age are ignored). Needs 16_gifts.sql. */
+  target_member_ids?: string[] | null
 }
 
 export type GiftOverride = {
@@ -221,13 +235,17 @@ export type GiftOverride = {
   note: string | null
 }
 
-/** Explicit quantity of a rule's gift for one family (e.g. 2 bhaji boxes); replaces the automatic count. */
+/**
+ * One family's change to a gift: a set quantity (e.g. 2 bhaji boxes; replaces the
+ * automatic count) and/or its own price (Dadi ji's box is the ₹1,500 one).
+ */
 export type GiftCount = {
   id?: string
   function_id?: string
   rule_id: string
   family_id: string
-  quantity: number
+  quantity: number | null
+  unit_amount?: number | null
 }
 
 export const TARGET_GROUP_LABELS: Record<GiftingRule['target_gender'], string> = {
@@ -245,6 +263,8 @@ export const TIER_LABELS: Record<GiftingRule['target_tier'], string> = {
   tier_2: 'Close Circle',
   tier_3: 'Extended'
 }
+
+const hasChosenPeople = (rule: GiftingRule) => (rule.target_member_ids?.length || 0) > 0
 
 function ruleAppliesToFamily(rule: GiftingRule, family: PlanningFamily) {
   if (rule.target_side !== 'both' && family.side !== rule.target_side) return false
@@ -266,21 +286,108 @@ function recipientsInFamily(rule: GiftingRule, hc: Headcount) {
   }
 }
 
+/** Named members of a family who are invited to the function (none if the family declined). */
+export function invitedMembers(family: PlanningFamily, rows: PlanningAttendance[]): PlanningMember[] {
+  const familyRows = rows.filter(r => r.family_id === family.id)
+  const familyRow = familyRows.find(r => r.member_id === null)
+  if (familyRow?.rsvp_status === 'declined') return []
+  const members = family.family_members || []
+  return familyRow ? members : members.filter(m => familyRows.some(r => r.member_id === m.id))
+}
+
+/** The price of a rule's item for one family: its own price, else its circle's, else the rule's. */
+export function giftUnitPrice(rule: GiftingRule, family: PlanningFamily, count?: GiftCount) {
+  if (count?.unit_amount !== null && count?.unit_amount !== undefined) return Number(count.unit_amount)
+  const tier = family.relation_tier as Tier | undefined
+  const byTier = tier ? rule.tier_amounts?.[tier] : undefined
+  return Number(byTier ?? rule.amount ?? 0)
+}
+
+/** One thing a family is due at a function: "Milni lifafa · 3 × ₹1,100". */
+export type GiftLine = {
+  /** Rule id, or LIFAFA_EXCEPTION_KEY for a family's fixed lifafa */
+  key: string
+  familyId: string
+  ruleId: string | null
+  kind: GiftKind
+  label: string
+  qty: number
+  unit: number
+  total: number
+  /** Quantity or price was changed for this family */
+  custom: boolean
+  /** Who it is for, when the rule names people */
+  people: string[]
+}
+
+export const LIFAFA_EXCEPTION_KEY = 'lifafa-exception'
+
+/** Every gift line for every invited family, using the same maths as the plan totals. */
+export function giftLines(
+  rules: GiftingRule[],
+  overrides: GiftOverride[],
+  families: PlanningFamily[],
+  rows: PlanningAttendance[],
+  kidAge = DEFAULT_KID_AGE,
+  giftCounts: GiftCount[] = []
+): GiftLine[] {
+  const overrideByFamily = new Map(overrides.map(o => [o.family_id, o]))
+  const countKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
+  const counts = new Map(giftCounts.map(c => [countKey(c.rule_id, c.family_id), c]))
+  const lines: GiftLine[] = []
+
+  families.forEach(family => {
+    const hc = familyHeadcount(family, rows, kidAge)
+    if (hc.total === 0) return
+    const override = overrideByFamily.get(family.id)
+    if (override) {
+      lines.push({
+        key: LIFAFA_EXCEPTION_KEY, familyId: family.id, ruleId: null, kind: 'lifafa',
+        label: override.note ? `Lifafa · ${override.note}` : 'Lifafa (family amount)',
+        qty: 1, unit: Number(override.lifafa_amount) || 0, total: Number(override.lifafa_amount) || 0, custom: true, people: []
+      })
+    }
+    rules.forEach(rule => {
+      if (rule.type === 'lifafa' && override) return
+      const count = counts.get(countKey(rule.id, family.id))
+      let autoQty = 0
+      let people: string[] = []
+      if (hasChosenPeople(rule)) {
+        const chosen = invitedMembers(family, rows).filter(m => rule.target_member_ids!.includes(m.id))
+        people = chosen.map(m => m.name || 'Guest')
+        autoQty = chosen.length === 0 ? 0 : rule.distribution === 'per_family' ? 1 : chosen.length
+      } else if (ruleAppliesToFamily(rule, family)) {
+        autoQty = recipientsInFamily(rule, hc)
+      }
+      const qty = count?.quantity !== null && count?.quantity !== undefined ? Number(count.quantity) : autoQty
+      if (qty <= 0) return
+      const unit = giftUnitPrice(rule, family, count)
+      lines.push({
+        key: rule.id, familyId: family.id, ruleId: rule.id, kind: rule.type, label: rule.rule_name,
+        qty, unit, total: qty * unit, custom: !!count, people
+      })
+    })
+  })
+  return lines
+}
+
 export type RuleResult = { rule: GiftingRule; count: number; total: number; customFamilies: number }
 
 export type GiftingSummary = {
   rules: RuleResult[]
   overrides: Array<{ override: GiftOverride; familyName: string; replacedAmount: number }>
+  lines: GiftLine[]
+  byKind: Record<GiftKind, number>
   lifafaTotal: number
+  /** Everything that isn't cash: bhaji, gift items and return gifts */
   returnGiftTotal: number
   total: number
 }
 
 /**
  * Planned gifting for a function. A family with a lifafa override gets that
- * fixed amount instead of what the lifafa rules would give them; return-gift
- * rules still apply to them. A per-family gift count (e.g. 2 bhaji boxes)
- * replaces the rule's automatic count for that family.
+ * fixed amount instead of what the lifafa rules would give them; other gifts
+ * still apply to them. A family's set quantity or price replaces the automatic one.
  */
 export function computeGifting(
   rules: GiftingRule[],
@@ -290,50 +397,41 @@ export function computeGifting(
   kidAge = DEFAULT_KID_AGE,
   giftCounts: GiftCount[] = []
 ): GiftingSummary {
-  const headcounts = families.map(f => ({ family: f, hc: familyHeadcount(f, rows, kidAge) }))
-  const overrideByFamily = new Map(overrides.map(o => [o.family_id, o]))
-  const countKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
-  const explicit = new Map(giftCounts.map(c => [countKey(c.rule_id, c.family_id), Number(c.quantity) || 0]))
+  const lines = giftLines(rules, overrides, families, rows, kidAge, giftCounts)
 
   const ruleResults: RuleResult[] = rules.map(rule => {
-    let count = 0
-    let customFamilies = 0
-    headcounts.forEach(({ family, hc }) => {
-      if (hc.total === 0) return
-      if (rule.type === 'lifafa' && overrideByFamily.has(family.id)) return
-      const set = explicit.get(countKey(rule.id, family.id))
-      if (set !== undefined) {
-        count += set
-        customFamilies++
-        return
-      }
-      if (!ruleAppliesToFamily(rule, family)) return
-      count += recipientsInFamily(rule, hc)
-    })
-    return { rule, count, total: count * Number(rule.amount || 0), customFamilies }
+    const mine = lines.filter(l => l.ruleId === rule.id)
+    return {
+      rule,
+      count: mine.reduce((s, l) => s + l.qty, 0),
+      total: mine.reduce((s, l) => s + l.total, 0),
+      customFamilies: mine.filter(l => l.custom).length
+    }
   })
 
   const overrideResults = overrides
     .map(o => {
-      const entry = headcounts.find(h => h.family.id === o.family_id)
-      if (!entry || entry.hc.total === 0) return null
+      const family = families.find(f => f.id === o.family_id)
+      if (!family) return null
+      const hc = familyHeadcount(family, rows, kidAge)
+      if (hc.total === 0) return null
       const replacedAmount = rules
-        .filter(r => r.type === 'lifafa' && ruleAppliesToFamily(r, entry.family))
-        .reduce((sum, r) => sum + recipientsInFamily(r, entry.hc) * Number(r.amount || 0), 0)
-      return { override: o, familyName: entry.family.family_name || 'Family', replacedAmount }
+        .filter(r => r.type === 'lifafa' && !hasChosenPeople(r) && ruleAppliesToFamily(r, family))
+        .reduce((sum, r) => sum + recipientsInFamily(r, hc) * giftUnitPrice(r, family), 0)
+      return { override: o, familyName: family.family_name || 'Family', replacedAmount }
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
 
-  const lifafaTotal =
-    ruleResults.filter(r => r.rule.type === 'lifafa').reduce((s, r) => s + r.total, 0) +
-    overrideResults.reduce((s, o) => s + Number(o.override.lifafa_amount || 0), 0)
-  const returnGiftTotal = ruleResults
-    .filter(r => r.rule.type === 'return_gift')
-    .reduce((s, r) => s + r.total, 0)
+  const byKind: Record<GiftKind, number> = { lifafa: 0, bhaji: 0, gift: 0, return_gift: 0 }
+  lines.forEach(l => { byKind[l.kind] = (byKind[l.kind] || 0) + l.total })
+  const lifafaTotal = byKind.lifafa
+  const returnGiftTotal = byKind.bhaji + byKind.gift + byKind.return_gift
 
   return {
     rules: ruleResults,
     overrides: overrideResults,
+    lines,
+    byKind,
     lifafaTotal,
     returnGiftTotal,
     total: lifafaTotal + returnGiftTotal
@@ -360,7 +458,7 @@ export async function recalcFunctionGifting(supabase: SupabaseClient, functionId
       .eq('function_id', functionId),
     supabase.from('function_gifting_rules').select('*').eq('function_id', functionId),
     supabase.from('function_gift_overrides').select('*').eq('function_id', functionId),
-    supabase.from('function_gift_counts').select('rule_id, family_id, quantity').eq('function_id', functionId)
+    supabase.from('function_gift_counts').select('*').eq('function_id', functionId)
   ])
 
   const error = funcRes.error || attRes.error || rulesRes.error || overridesRes.error || countsRes.error
