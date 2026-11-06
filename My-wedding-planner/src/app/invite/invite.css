@@ -51,6 +51,19 @@
 .inv-chip:active { transform: scale(.95) }
 .inv-envelope-out { transition: opacity .7s ease, visibility .7s ease }
 
+/* First page: night sky, lanterns and lotus pond */
+@keyframes inv-twinkle { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+@keyframes inv-lantern { 0% { transform: translate(0, 0); opacity: 0 } 10% { opacity: 1 } 100% { transform: translate(30px, -95vh); opacity: 0 } }
+@keyframes inv-bob { 0%, 100% { transform: translateY(0) rotate(-2deg) } 50% { transform: translateY(-4px) rotate(2deg) } }
+@keyframes inv-ganesh { from { opacity: 0; transform: scale(.92) } to { opacity: 1; transform: none } }
+.inv-star { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #FFF6E0; animation: inv-twinkle 3s ease-in-out infinite }
+.inv-lantern { position: absolute; bottom: 16vh; width: 18px; height: 24px; border-radius: 5px 5px 9px 9px; background: #F59E0B; box-shadow: 0 0 14px 6px rgba(245, 158, 11, .45); animation: inv-lantern linear infinite }
+.inv-bob { animation: inv-bob 3.5s ease-in-out infinite }
+.inv-ganesh { opacity: 0; animation: inv-ganesh 1.4s ease .1s forwards; filter: drop-shadow(0 0 8px rgba(242, 196, 109, .35)) }
+/* Shorter phones: shrink the envelope stage so everything fits above the pond */
+@media (max-height: 740px) { .inv-env-stage { transform: scale(.84); margin-top: -18px; margin-bottom: -30px } }
+@media (max-height: 640px) { .inv-env-stage { transform: scale(.74); margin-top: -34px; margin-bottom: -60px } }
+
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
     .inv-reveal { animation: inv-reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 90% }
@@ -62,4 +75,6 @@
   .inv-rise, .inv-pop { animation: none; opacity: 1 }
   .inv-pull { animation: none; transform: translateY(-62px); z-index: 6 }
   .inv-flap, .inv-letter, .inv-fade, .inv-chip, .inv-envelope-out { transition: none }
+  .inv-star, .inv-lantern, .inv-bob { animation: none }
+  .inv-ganesh { animation: none; opacity: 1 }
 }

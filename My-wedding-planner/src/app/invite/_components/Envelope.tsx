@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Mandala, Petals } from './Decor'
+import { GaneshJi, LotusPond, NightSky } from './Decor'
 
 /**
  * Full-screen sealed envelope shown over the invitation. Tapping the wax seal opens the
@@ -49,18 +49,20 @@ export default function Envelope({ code, title, bride, groom }: { code: string; 
       aria-label="Your invitation"
       className={`inv-envelope-out fixed inset-0 z-50 flex flex-col items-center overflow-hidden bg-[#3A0B20] px-5 text-[#FFF6E9] ${stage === 'gone' ? 'invisible opacity-0' : 'visible opacity-100'}`}
     >
-      <Mandala className="inv-mandala pointer-events-none absolute left-1/2 top-[14%] w-[620px] max-w-none -translate-x-1/2 opacity-20" />
-      <Petals />
+      <NightSky />
+      <LotusPond />
 
-      <p className="inv-rise mt-[8vh] font-[family-name:var(--font-devanagari)] text-[17px] text-[#F2C46D]" style={{ animationDelay: '0.1s' }}>॥ श्री गणेशाय नमः ॥</p>
-      <p className="inv-rise mt-[5vh] font-data text-xs uppercase tracking-[4px] text-[#E9CBA7]" style={{ animationDelay: '0.35s' }}>With love, for</p>
-      <div className="inv-rise" style={{ animationDelay: '0.55s' }}>
+      <GaneshJi className="inv-ganesh relative mt-[3vh] h-[clamp(64px,11vh,92px)] w-auto" />
+      <p className="inv-rise relative mt-2 font-[family-name:var(--font-devanagari)] text-[17px] text-[#F2C46D]" style={{ animationDelay: '0.3s' }}>॥ श्री गणेशाय नमः ॥</p>
+      <p className="inv-rise relative mt-[3vh] font-data text-xs uppercase tracking-[4px] text-[#E9CBA7]" style={{ animationDelay: '0.5s' }}>With love, for</p>
+      <div className="inv-rise relative" style={{ animationDelay: '0.7s' }}>
         <h1 className="inv-gold mt-2 pb-2 text-center font-display text-[52px] font-bold leading-[1.05]">
           {first}{rest.length ? <><br />Family</> : null}
         </h1>
       </div>
 
-      <div className="inv-rise relative mt-[5vh] h-[300px] w-[310px]" style={{ animationDelay: '0.85s' }}>
+      <div className="inv-env-stage relative mt-[2vh]">
+      <div className="inv-rise relative h-[300px] w-[310px]" style={{ animationDelay: '0.95s' }}>
         <div className="inv-float absolute inset-0">
           <div
             className={`absolute left-[14px] right-[14px] top-[96px] z-[2] flex h-[200px] flex-col items-center justify-center gap-1 rounded-[10px] bg-[#FFF8EE] shadow-[0_10px_30px_rgba(0,0,0,0.25)] ${opened ? 'inv-pull' : ''}`}
@@ -94,8 +96,10 @@ export default function Envelope({ code, title, bride, groom }: { code: string; 
         </div>
       </div>
 
+      </div>
+
       {!opened ? (
-        <p className="inv-rise relative z-10 mt-8 font-data text-sm text-[#F3DFC4]" style={{ animationDelay: '1.2s' }}>Tap the seal to open</p>
+        <p className="inv-rise relative z-10 mt-6 font-data text-sm text-[#F3DFC4]" style={{ animationDelay: '1.2s' }}>Tap the seal to open</p>
       ) : (
         <button
           type="button"
