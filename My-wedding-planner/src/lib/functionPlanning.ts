@@ -463,11 +463,21 @@ export function giftLines(
   return lines
 }
 
-export type RuleResult = { rule: GiftingRule; count: number; total: number; customFamilies: number }
+export type RuleResult = {
+  rule: GiftingRule
+  count: number
+  total: number
+  customFamilies: number
+  /** Lifafa rules: people (or families) left out because their family has an exception */
+  excludedCount: number
+  excludedFamilies: string[]
+}
 
 export type GiftingSummary = {
   rules: RuleResult[]
-  overrides: Array<{ override: GiftOverride; familyName: string; replacedAmount: number }>
+  overrides: Array<{ override: GiftOverride; familyName: string; replacedAmount: number; amount: number }>
+  /** Exceptions minus what the rules would have given those families (negative = saving) */
+  exceptionsDifference: number
   lines: GiftLine[]
   byKind: Record<GiftKind, number>
   lifafaTotal: number
@@ -490,14 +500,22 @@ export function computeGifting(
   giftCounts: GiftCount[] = []
 ): GiftingSummary {
   const lines = giftLines(rules, overrides, families, rows, kidAge, giftCounts)
+  // What the rules would give families that have a lifafa exception (to show what was left out)
+  const exceptionFamilies = new Set(overrides.map(o => o.family_id))
+  const withoutExceptions = overrides.length
+    ? giftLines(rules.filter(r => r.type === 'lifafa'), [], families.filter(f => exceptionFamilies.has(f.id)), rows, kidAge, giftCounts)
+    : []
 
   const ruleResults: RuleResult[] = rules.map(rule => {
     const mine = lines.filter(l => l.ruleId === rule.id)
+    const left = withoutExceptions.filter(l => l.ruleId === rule.id)
     return {
       rule,
       count: mine.reduce((s, l) => s + l.qty, 0),
       total: mine.reduce((s, l) => s + l.total, 0),
-      customFamilies: mine.filter(l => l.custom).length
+      customFamilies: mine.filter(l => l.custom).length,
+      excludedCount: left.reduce((s, l) => s + l.qty, 0),
+      excludedFamilies: left.map(l => families.find(f => f.id === l.familyId)?.family_name || 'Family')
     }
   })
 
@@ -507,10 +525,9 @@ export function computeGifting(
       if (!family) return null
       const hc = familyHeadcount(family, rows, kidAge)
       if (hc.total === 0) return null
-      const replacedAmount = rules
-        .filter(r => r.type === 'lifafa' && !hasChosenPeople(r) && ruleAppliesToFamily(r, family))
-        .reduce((sum, r) => sum + recipientsInFamily(r, hc) * giftUnitPrice(r, family), 0)
-      return { override: o, familyName: family.family_name || 'Family', replacedAmount }
+      const replacedAmount = withoutExceptions.filter(l => l.familyId === family.id).reduce((sum, l) => sum + l.total, 0)
+      const amount = exceptionAmount(o, rules, family, rows, kidAge)
+      return { override: o, familyName: family.family_name || 'Family', replacedAmount, amount }
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
 
@@ -524,6 +541,7 @@ export function computeGifting(
     overrides: overrideResults,
     lines,
     byKind,
+    exceptionsDifference: overrideResults.reduce((s, o) => s + o.amount - o.replacedAmount, 0),
     lifafaTotal,
     returnGiftTotal,
     total: lifafaTotal + returnGiftTotal

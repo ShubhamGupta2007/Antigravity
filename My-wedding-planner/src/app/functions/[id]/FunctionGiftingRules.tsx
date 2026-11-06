@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label'
 import {
   computeGifting,
   GIFT_KINDS,
+  giftLines,
+  giftUnitPrice,
   invitedMembers,
-  exceptionAmount,
   lifafaBreakdown,
   saveGiftingPlan,
   TARGET_GROUP_LABELS,
@@ -87,7 +88,17 @@ export default function FunctionGiftingRules({
   const [chosen, setChosen] = useState<string[]>([])
   const [peopleQuery, setPeopleQuery] = useState('')
 
-  // Family exception form: amounts per person ('' = their usual amount)
+  // Per-family quantities / prices of bhaji and gifts (kept here so totals update after a change)
+  const [counts, setCounts] = useState<GiftCount[]>(giftCounts)
+  const itemRules = rules.filter(r => r.type !== 'lifafa')
+  // "Change for a family" form: lifafa per person and bhaji / gifts ('' = usual)
+  const [ovItems, setOvItems] = useState<Record<string, { qty: string; price: string }>>({})
+  const itemsFor = (familyId: string) =>
+    Object.fromEntries(
+      counts
+        .filter(c => c.family_id === familyId)
+        .map(c => [c.rule_id, { qty: c.quantity !== null && c.quantity !== undefined ? String(c.quantity) : '', price: c.unit_amount !== null && c.unit_amount !== undefined ? String(c.unit_amount) : '' }])
+    )
   const [ovFamily, setOvFamily] = useState('')
   const [ovAmounts, setOvAmounts] = useState<Record<string, string>>({})
   const [ovNote, setOvNote] = useState('')
@@ -96,6 +107,7 @@ export default function FunctionGiftingRules({
     setSubmitError(null)
     const familyId = editing?.family_id || invitedFamilies[0]?.id || ''
     setOvFamily(familyId)
+    setOvItems(itemsFor(familyId))
     setOvNote(editing?.note || '')
     if (editing?.breakdown) {
       setOvAmounts(Object.fromEntries(Object.entries(editing.breakdown).map(([k, v]) => [k, String(v)])))
@@ -127,8 +139,8 @@ export default function FunctionGiftingRules({
   }
 
   const summary = useMemo(
-    () => computeGifting(rules, overrides, families, attendance, kidAge, giftCounts),
-    [rules, overrides, families, attendance, kidAge, giftCounts]
+    () => computeGifting(rules, overrides, families, attendance, kidAge, counts),
+    [rules, overrides, families, attendance, kidAge, counts]
   )
 
   // Keep the stored totals (and the budget's "Lifafas & Gifts" line) in step
@@ -171,6 +183,21 @@ export default function FunctionGiftingRules({
   const ovChanges: Record<string, number> = {}
   Object.entries(ovAmounts).forEach(([k, v]) => { if (v.trim() !== '' && Number.isFinite(Number(v))) ovChanges[k] = Math.max(0, Number(v)) })
   const ovBreakdown = ovFamilyObj ? lifafaBreakdown(rules, ovFamilyObj, attendance, kidAge, ovChanges) : null
+  const ovUsualItems = ovFamilyObj ? giftLines(itemRules, [], [ovFamilyObj], attendance, kidAge, []) : []
+  const parseNum = (v: string | undefined) => (v === undefined || v.trim() === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)))
+  const ovItemRows = ovFamilyObj
+    ? itemRules.map(rule => {
+        const usual = ovUsualItems.find(l => l.ruleId === rule.id)
+        const usualQty = usual?.qty || 0
+        const usualUnit = usual?.unit ?? giftUnitPrice(rule, ovFamilyObj)
+        const draft = ovItems[rule.id] || { qty: '', price: '' }
+        const qty = parseNum(draft.qty) ?? usualQty
+        const unit = parseNum(draft.price) ?? usualUnit
+        return { rule, usualQty, usualUnit, draft, qty, unit, total: qty * unit, changed: qty !== usualQty || unit !== usualUnit }
+      })
+    : []
+  const ovItemsTotal = ovItemRows.reduce((s, r) => s + r.total, 0)
+  const ovItemsUsual = ovItemRows.reduce((s, r) => s + r.usualQty * r.usualUnit, 0)
 
   // ---- Rules -------------------------------------------------------------
   const handleDeleteRule = async (id: string) => {
@@ -271,10 +298,48 @@ export default function FunctionGiftingRules({
       setLoading(false)
       return
     }
-    // Only amounts that differ from the usual are kept, so later rule changes still flow through
+    // 1. Bhaji / gifts: this family's quantity and price (blank = usual)
+    let nextCounts = counts
+    for (const row of ovItemRows) {
+      const existing = counts.find(c => c.rule_id === row.rule.id && c.family_id === ovFamily)
+      const quantity = parseNum(row.draft.qty)
+      const unit_amount = parseNum(row.draft.price)
+      const same = (existing?.quantity ?? null) === (quantity === null ? null : Math.floor(quantity)) && (existing?.unit_amount ?? null) === unit_amount
+      if (quantity === null && unit_amount === null) {
+        if (!existing) continue
+        const { error } = await supabase.from('function_gift_counts').delete().eq('rule_id', row.rule.id).eq('family_id', ovFamily)
+        if (error) { setSubmitError(error.message); setLoading(false); return }
+        nextCounts = nextCounts.filter(c => c !== existing)
+      } else if (!existing || !same) {
+        const record = { function_id: functionId, rule_id: row.rule.id, family_id: ovFamily, quantity: quantity === null ? null : Math.floor(quantity), unit_amount }
+        const { error } = await supabase.from('function_gift_counts').upsert(record, { onConflict: 'rule_id,family_id' })
+        if (error) {
+          setSubmitError(/unit_amount|null value/.test(error.message) ? 'Run supabase/16_gifts.sql in the Supabase SQL editor to change bhaji and gift prices for a family.' : error.message)
+          setLoading(false)
+          return
+        }
+        nextCounts = [...nextCounts.filter(c => c !== existing), record]
+      }
+    }
+    setCounts(nextCounts)
+
+    // 2. Lifafa: only amounts that differ from the usual are kept, so later rule changes still flow through
     const changed: Record<string, number> = {}
     ovBreakdown.parts.forEach(p => { if (p.changed && p.amount !== p.usual) changed[p.key] = p.amount })
     const hadBreakdown = !!overrideModal.editing?.breakdown
+    const existingOverride = overrides.find(o => o.family_id === ovFamily)
+    if (Object.keys(changed).length === 0 && !ovNote.trim()) {
+      // Nothing special about this family's lifafa: no exception (remove one if it was there)
+      if (existingOverride) {
+        const { error } = await supabase.from('function_gift_overrides').delete().eq('id', existingOverride.id)
+        if (error) { setSubmitError(error.message); setLoading(false); return }
+        setOverrides(prev => prev.filter(o => o.id !== existingOverride.id))
+      }
+      setOverrideModal({ open: false, editing: null })
+      setSubmitError(null)
+      setLoading(false)
+      return
+    }
     const payload = {
       function_id: functionId,
       family_id: ovFamily,
@@ -317,7 +382,7 @@ export default function FunctionGiftingRules({
         {canEdit && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={loading} onClick={() => openOverrideForm(null)} className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
-              Family exception
+              Change for a family
             </Button>
             <Button size="sm" disabled={loading} onClick={() => openRuleForm(null)} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
               <Plus className="w-4 h-4 mr-1" /> Add Rule
@@ -337,7 +402,7 @@ export default function FunctionGiftingRules({
         </div>
       ) : (
         <div className="space-y-3">
-          {summary.rules.map(({ rule, count, total, customFamilies }) => (
+          {summary.rules.map(({ rule, count, total, customFamilies, excludedCount, excludedFamilies }) => (
             <div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white border border-marigold/30 rounded-xl">
               <div className="min-w-0">
                 <h3 className="font-semibold text-sm text-maroon">{(GIFT_KINDS[rule.type] || GIFT_KINDS.gift).icon} {rule.rule_name}</h3>
@@ -361,6 +426,11 @@ export default function FunctionGiftingRules({
                 {rule.tier_amounts && Object.keys(rule.tier_amounts).length > 0 && (
                   <p className="text-[10px] font-data text-maroon/60 mt-0.5">
                     {TIERS.filter(t => rule.tier_amounts?.[t] !== undefined).map(t => `${TIER_SHORT[t]} ${rupees(Number(rule.tier_amounts![t]))}`).join(' · ')} · others {rupees(rule.amount)}
+                  </p>
+                )}
+                {excludedFamilies.length > 0 && (
+                  <p className="text-[10px] text-maroon/60 font-data mt-0.5">
+                    Leaves out {excludedFamilies.map(n => familyLabel(n)).join(', ')} ({excludedCount} {rule.distribution === 'per_family' ? (excludedCount === 1 ? 'family' : 'families') : (excludedCount === 1 ? 'person' : 'people')}): see family exceptions below
                   </p>
                 )}
                 {customFamilies > 0 && (
@@ -391,13 +461,19 @@ export default function FunctionGiftingRules({
 
           {summary.overrides.length > 0 && (
             <div className="pt-2 space-y-2">
-              <h4 className="text-[10px] uppercase font-bold tracking-wider text-maroon/50 font-data">Family exceptions (replace their lifafa rules)</h4>
-              {summary.overrides.map(({ override, familyName, replacedAmount }) => (
+              <h4 className="text-[10px] uppercase font-bold tracking-wider text-maroon/50 font-data">Family lifafa changes (replace their lifafa rules)</h4>
+              {summary.overrides.map(({ override, familyName, replacedAmount, amount }) => (
                 <div key={override.id} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-marigold/5 border border-marigold/25 rounded-xl">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-maroon">{familyLabel(familyName)}</p>
                     <p className="text-[10px] text-maroon/60 font-data">
-                      Usually {rupees(replacedAmount)}{override.note ? ` • ${override.note}` : ''}
+                      Rules would give {rupees(replacedAmount)} → now {rupees(amount)}
+                      {amount !== replacedAmount && (
+                        <span className={`ml-1 font-semibold ${amount < replacedAmount ? 'text-mehendi' : 'text-rust-red'}`}>
+                          ({amount < replacedAmount ? '−' : '+'}{rupees(Math.abs(amount - replacedAmount))})
+                        </span>
+                      )}
+                      {override.note ? ` • ${override.note}` : ''}
                     </p>
                     {override.breakdown && (() => {
                       const fam = families.find(f => f.id === override.family_id)
@@ -408,9 +484,7 @@ export default function FunctionGiftingRules({
                     })()}
                   </div>
                   <div className="flex items-center gap-3 ml-auto">
-                    <span className="text-sm font-bold text-maroon">
-                      {(() => { const fam = families.find(f => f.id === override.family_id); return rupees(fam ? exceptionAmount(override, rules, fam, attendance, kidAge) : override.lifafa_amount) })()}
-                    </span>
+                    <span className="text-sm font-bold text-maroon">{rupees(amount)}</span>
                     {canEdit && (
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" aria-label="Edit exception" onClick={() => openOverrideForm(override)} className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8">
@@ -436,6 +510,12 @@ export default function FunctionGiftingRules({
                   <span>{GIFT_KINDS[k].icon} {GIFT_KINDS[k].label}</span><span className="font-semibold">{rupees(summary.byKind[k])}</span>
                 </div>
               ))}
+            {summary.overrides.length > 0 && summary.exceptionsDifference !== 0 && (
+              <p className="text-[10px] font-data text-maroon/60">
+                Family exceptions make lifafas {rupees(Math.abs(summary.exceptionsDifference))} {summary.exceptionsDifference < 0 ? 'less' : 'more'} than the rules alone
+                ({rupees(summary.byKind.lifafa - summary.exceptionsDifference)}).
+              </p>
+            )}
             <div className="flex justify-between items-center pt-1 border-t border-marigold/20">
               <span className="font-semibold text-maroon text-sm">Planned gifting</span>
               <span className="font-display font-bold text-maroon text-lg">{rupees(summary.total)}</span>
@@ -630,11 +710,11 @@ export default function FunctionGiftingRules({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-maroon/20 backdrop-blur-sm">
           <div className="bg-ivory w-full max-w-md rounded-2xl border border-marigold/30 shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-marigold/10 bg-white flex justify-between items-center">
-              <h3 className="font-display font-bold text-maroon text-lg">Family lifafa exception</h3>
+              <h3 className="font-display font-bold text-maroon text-lg">Change for one family</h3>
               <button onClick={() => setOverrideModal({ open: false, editing: null })} className="text-maroon/50 hover:text-maroon" aria-label="Close">✕</button>
             </div>
             <form onSubmit={handleSaveOverride} className="p-5 space-y-4">
-              <p className="text-xs font-data text-maroon/60">Change what each person in this family gets. Leave a box empty to keep their usual amount.</p>
+              <p className="text-xs font-data text-maroon/60">Change what this family gets: lifafa person by person, and how many bhaji boxes or gifts at what price. Leave a box empty to keep the usual.</p>
               {submitError && (
                 <div className="p-3 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded-lg font-data font-semibold">{submitError}</div>
               )}
@@ -644,7 +724,7 @@ export default function FunctionGiftingRules({
                 <>
                   <div className="space-y-1">
                     <Label htmlFor="ov-family" className="text-xs text-maroon font-semibold">Family</Label>
-                    <select id="ov-family" value={ovFamily} onChange={e => { setOvFamily(e.target.value); setOvAmounts({}) }} disabled={!!overrideModal.editing} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm disabled:opacity-70">
+                    <select id="ov-family" value={ovFamily} onChange={e => { setOvFamily(e.target.value); setOvAmounts({}); setOvItems(itemsFor(e.target.value)) }} disabled={!!overrideModal.editing} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm disabled:opacity-70">
                       {invitedFamilies.map(f => (
                         <option key={f.id} value={f.id}>{familyLabel(f.family_name)}</option>
                       ))}
@@ -654,7 +734,7 @@ export default function FunctionGiftingRules({
                   {ovBreakdown && (
                     <div className="rounded-xl border border-marigold/25 bg-white">
                       <div className="grid grid-cols-[1fr_auto_6.5rem] items-center gap-x-3 border-b border-marigold/15 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-maroon/50">
-                        <span>Who</span><span className="text-right">Usual</span><span>Give</span>
+                        <span>💵 Lifafa · who</span><span className="text-right">Usual</span><span>Give</span>
                       </div>
                       <ul className="divide-y divide-marigold/10">
                         {ovBreakdown.parts.map(p => (
@@ -680,6 +760,37 @@ export default function FunctionGiftingRules({
                       <div className="flex items-center justify-between gap-3 border-t border-marigold/20 bg-marigold/10 px-3 py-2.5 rounded-b-xl">
                         <span className="text-xs font-data text-maroon/70">Usually {rupees(ovBreakdown.usualTotal)}</span>
                         <span className="font-display text-lg font-bold text-maroon">Total {rupees(ovBreakdown.total)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {ovFamilyObj && itemRules.length > 0 && (
+                    <div className="rounded-xl border border-marigold/25 bg-white">
+                      <div className="grid grid-cols-[1fr_4rem_5.5rem] items-center gap-x-2 border-b border-marigold/15 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-maroon/50">
+                        <span>Bhaji &amp; gifts</span><span>How many</span><span>Price ₹</span>
+                      </div>
+                      <ul className="divide-y divide-marigold/10">
+                        {ovItemRows.map(row => (
+                          <li key={row.rule.id} className="grid grid-cols-[1fr_4rem_5.5rem] items-center gap-x-2 px-3 py-2">
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-maroon">{(GIFT_KINDS[row.rule.type] || GIFT_KINDS.gift).icon} {row.rule.rule_name}</span>
+                              <span className="block text-[10px] text-maroon/50 font-data">
+                                Usually {row.usualQty ? `${row.usualQty} × ${rupees(row.usualUnit)}` : 'not given'}
+                                {row.changed && <span className="font-semibold text-maroon"> → {row.qty} × {rupees(row.unit)}</span>}
+                              </span>
+                            </span>
+                            <Input type="number" min={0} inputMode="numeric" aria-label={`How many ${row.rule.rule_name}`} placeholder={String(row.usualQty)}
+                              value={row.draft.qty} onChange={e => setOvItems(prev => ({ ...prev, [row.rule.id]: { ...(prev[row.rule.id] || { qty: '', price: '' }), qty: e.target.value } }))}
+                              className={`h-9 text-sm ${row.draft.qty.trim() !== '' ? 'border-maroon bg-marigold/10 font-semibold' : 'bg-white border-marigold/40'}`} />
+                            <Input type="number" min={0} inputMode="numeric" aria-label={`Price of one ${row.rule.rule_name}`} placeholder={String(row.usualUnit)}
+                              value={row.draft.price} onChange={e => setOvItems(prev => ({ ...prev, [row.rule.id]: { ...(prev[row.rule.id] || { qty: '', price: '' }), price: e.target.value } }))}
+                              className={`h-9 text-sm ${row.draft.price.trim() !== '' ? 'border-maroon bg-marigold/10 font-semibold' : 'bg-white border-marigold/40'}`} />
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center justify-between gap-3 border-t border-marigold/20 bg-marigold/10 px-3 py-2.5 rounded-b-xl">
+                        <span className="text-xs font-data text-maroon/70">Usually {rupees(ovItemsUsual)}</span>
+                        <span className="font-display text-lg font-bold text-maroon">Total {rupees(ovItemsTotal)}</span>
                       </div>
                     </div>
                   )}
