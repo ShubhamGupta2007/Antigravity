@@ -17,6 +17,7 @@ import FunctionReplies, { type GuestMessage, type ReplyFamily } from './Function
 import {
   computeGifting,
   DEFAULT_KID_AGE,
+  DEFAULT_SMALL_KID_AGE,
   familiesFromAttendance,
   functionHeadcount,
   formatTime,
@@ -98,6 +99,8 @@ export default async function FunctionDetailPage({
   const isManager = ['admin', 'planner', 'bride', 'groom'].includes(role)
   const canEditSchedule = isManager || func.hosting_side === 'joint' || func.hosting_side === dbUser?.side
   const kidAge: number = func.kid_age_threshold || DEFAULT_KID_AGE
+  // Small kids for gifting (needs 18_small_kids.sql; 5 until then)
+  const smallKidAge: number = func.small_kid_age ?? DEFAULT_SMALL_KID_AGE
 
   // Fetch invited guests attendance details
   const { data: attendance, error: attendanceError } = await supabase
@@ -317,7 +320,7 @@ export default async function FunctionDetailPage({
   const giftCounts = (giftCountsRes.data || []) as GiftCount[]
   const handoverRows = (handoverRes.data || []) as HandoverRow[]
   const handoverReady = !handoverRes.error
-  const giftPlan = computeGifting(giftingRules, giftOverrides, planningFamilies, attendanceRows, kidAge, giftCounts)
+  const giftPlan = computeGifting(giftingRules, giftOverrides, planningFamilies, attendanceRows, kidAge, giftCounts, smallKidAge)
   const givenKeys = new Set(handoverRows.map(h => `${h.family_id}:${h.line_key}`))
   const giftGivenAmount = giftPlan.lines.filter(l => givenKeys.has(`${l.familyId}:${l.key}`)).reduce((s, l) => s + l.total, 0)
   const giftFamilies = new Set(giftPlan.lines.map(l => l.familyId))
@@ -777,6 +780,7 @@ export default async function FunctionDetailPage({
                   overrides={giftOverrides}
                   initialCounts={giftCounts}
                   kidAge={kidAge}
+                  smallKidAge={smallKidAge}
                   rituals={ritualList}
                   initialHandover={handoverRows}
                 />
@@ -789,6 +793,7 @@ export default async function FunctionDetailPage({
           <FunctionGiftingRules
             functionId={func.id}
             initialKidAge={kidAge}
+            initialSmallKidAge={smallKidAge}
             canEdit={isManager}
             initialRules={giftingRules}
             initialOverrides={giftOverrides}

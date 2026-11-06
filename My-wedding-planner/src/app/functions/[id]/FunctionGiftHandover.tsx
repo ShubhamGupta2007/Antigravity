@@ -7,6 +7,7 @@ import { createClient } from '@/lib/client'
 import { Input } from '@/components/ui/input'
 import {
   computeGifting,
+  DEFAULT_SMALL_KID_AGE,
   GIFT_KINDS,
   LIFAFA_EXCEPTION_KEY,
   saveGiftingPlan,
@@ -44,6 +45,7 @@ export default function FunctionGiftHandover({
   overrides,
   initialCounts,
   kidAge,
+  smallKidAge = DEFAULT_SMALL_KID_AGE,
   rituals,
   initialHandover
 }: {
@@ -58,6 +60,7 @@ export default function FunctionGiftHandover({
   overrides: GiftOverride[]
   initialCounts: GiftCount[]
   kidAge: number
+  smallKidAge?: number
   rituals: Ritual[]
   initialHandover: HandoverRow[]
 }) {
@@ -76,8 +79,8 @@ export default function FunctionGiftHandover({
   const [busy, setBusy] = useState(false)
 
   const summary = useMemo(
-    () => computeGifting(rules, overrides, families, attendance, kidAge, counts),
-    [rules, overrides, families, attendance, kidAge, counts]
+    () => computeGifting(rules, overrides, families, attendance, kidAge, counts, smallKidAge),
+    [rules, overrides, families, attendance, kidAge, counts, smallKidAge]
   )
 
   // Lines grouped per family
@@ -201,7 +204,7 @@ export default function FunctionGiftHandover({
     if (quantity !== null || unit_amount !== null) next.push({ rule_id: editing.ruleId, family_id: editing.familyId, quantity: quantity === null ? null : Math.floor(quantity), unit_amount })
     setCounts(next)
     // Keep the function's planned totals (and the budget line) in step
-    const s = computeGifting(rules, overrides, families, attendance, kidAge, next)
+    const s = computeGifting(rules, overrides, families, attendance, kidAge, next, smallKidAge)
     await saveGiftingPlan(supabase, functionId, s.lifafaTotal, s.returnGiftTotal)
     setBusy(false)
     setEditing(null)

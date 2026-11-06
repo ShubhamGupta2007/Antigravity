@@ -5,6 +5,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const DEFAULT_KID_AGE = 12
+/** Kids under this age are "small kids" (e.g. a smaller lifafa); set per function. */
+export const DEFAULT_SMALL_KID_AGE = 5
 export const SENIOR_AGE = 60
 
 export type PlanningMember = {
@@ -47,6 +49,8 @@ export type Headcount = {
   adults: number // 12+ (or the function's kid age), including seniors
   seniors: number // subset of adults, 60+
   kids: number
+  /** Subset of kids: named kids under the function's small-kid age */
+  smallKids: number
   males: number
   females: number
   total: number
@@ -70,7 +74,7 @@ export function classifyMember(member: PlanningMember, kidAge = DEFAULT_KID_AGE)
 
 const EMPTY: Headcount = {
   adults: 0, seniors: 0, kids: 0, males: 0, females: 0, total: 0,
-  autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false, rsvp: 'invited'
+  smallKids: 0, autoAdults: 0, autoKids: 0, isOverride: false, isFamilyInvited: false, rsvp: 'invited'
 }
 
 /**
@@ -82,7 +86,8 @@ const EMPTY: Headcount = {
 export function familyHeadcount(
   family: PlanningFamily,
   rows: PlanningAttendance[],
-  kidAge = DEFAULT_KID_AGE
+  kidAge = DEFAULT_KID_AGE,
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ): Headcount {
   const familyRows = rows.filter(r => r.family_id === family.id)
   if (familyRows.length === 0) return { ...EMPTY }
@@ -98,12 +103,15 @@ export function familyHeadcount(
   let namedAdults = 0
   let namedSeniors = 0
   let namedKids = 0
+  let namedSmallKids = 0
   let males = 0
   let females = 0
   invitedMembers.forEach(m => {
     const group = classifyMember(m, kidAge)
-    if (group === 'kid') namedKids++
-    else if (group === 'senior') namedSeniors++
+    if (group === 'kid') {
+      namedKids++
+      if (m.age !== null && m.age !== undefined && m.age < smallKidAge) namedSmallKids++
+    } else if (group === 'senior') namedSeniors++
     else namedAdults++
     if (m.gender === 'Male') males++
     else if (m.gender === 'Female') females++
@@ -131,6 +139,8 @@ export function familyHeadcount(
     adults,
     seniors,
     kids,
+    // Kids without an age (or counted but not named) are treated as older kids
+    smallKids: Math.min(namedSmallKids, kids),
     males: Math.min(males, total),
     females: Math.min(females, total),
     total,
@@ -156,13 +166,14 @@ export type FunctionHeadcount = Headcount & {
 export function functionHeadcount(
   families: PlanningFamily[],
   rows: PlanningAttendance[],
-  kidAge = DEFAULT_KID_AGE
+  kidAge = DEFAULT_KID_AGE,
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ): FunctionHeadcount {
   const result: FunctionHeadcount = {
     ...EMPTY, families: 0, outstation: 0, confirmedTotal: 0, confirmedFamilies: 0, declinedFamilies: 0, byFamily: {}
   }
   families.forEach(f => {
-    const hc = familyHeadcount(f, rows, kidAge)
+    const hc = familyHeadcount(f, rows, kidAge, smallKidAge)
     if (hc.total === 0 && !rows.some(r => r.family_id === f.id)) return
     result.byFamily[f.id] = hc
     if (hc.rsvp === 'declined') {
@@ -177,6 +188,7 @@ export function functionHeadcount(
     result.adults += hc.adults
     result.seniors += hc.seniors
     result.kids += hc.kids
+    result.smallKids += hc.smallKids
     result.males += hc.males
     result.females += hc.females
     result.total += hc.total
@@ -220,7 +232,7 @@ export type GiftingRule = {
   amount: number
   target_side: 'groom' | 'bride' | 'both'
   target_tier: Tier | 'all'
-  target_gender: 'Male' | 'Female' | 'Kids' | 'Adults' | 'Seniors' | 'All'
+  target_gender: 'Male' | 'Female' | 'Kids' | 'SmallKids' | 'OlderKids' | 'Adults' | 'Seniors' | 'All'
   /** A different price per circle; a circle left out uses `amount`. Needs 16_gifts.sql. */
   tier_amounts?: Partial<Record<Tier, number>> | null
   /** Only these people get it (side / circle / age are ignored). Needs 16_gifts.sql. */
@@ -254,6 +266,8 @@ export const TARGET_GROUP_LABELS: Record<GiftingRule['target_gender'], string> =
   All: 'Everyone',
   Adults: 'Adults',
   Kids: 'Kids',
+  SmallKids: 'Small kids',
+  OlderKids: 'Older kids',
   Seniors: 'Seniors (60+)',
   Male: 'Gents',
   Female: 'Ladies'
@@ -281,6 +295,8 @@ function recipientsInFamily(rule: GiftingRule, hc: Headcount) {
     case 'All': return hc.total
     case 'Adults': return hc.adults
     case 'Kids': return hc.kids
+    case 'SmallKids': return hc.smallKids
+    case 'OlderKids': return hc.kids - hc.smallKids
     case 'Seniors': return hc.seniors
     case 'Male': return hc.males
     case 'Female': return hc.females
@@ -305,12 +321,15 @@ export function giftUnitPrice(rule: GiftingRule, family: PlanningFamily, count?:
   return Number(byTier ?? rule.amount ?? 0)
 }
 
-function memberInGroup(group: GiftingRule['target_gender'], m: PlanningMember, kidAge: number) {
+function memberInGroup(group: GiftingRule['target_gender'], m: PlanningMember, kidAge: number, smallKidAge: number) {
   const age = classifyMember(m, kidAge)
+  const small = age === 'kid' && m.age !== null && m.age !== undefined && m.age < smallKidAge
   switch (group) {
     case 'All': return true
     case 'Adults': return age !== 'kid'
     case 'Kids': return age === 'kid'
+    case 'SmallKids': return small
+    case 'OlderKids': return age === 'kid' && !small
     case 'Seniors': return age === 'senior'
     case 'Male': return m.gender === 'Male'
     case 'Female': return m.gender === 'Female'
@@ -333,27 +352,32 @@ export function lifafaBreakdown(
   family: PlanningFamily,
   rows: PlanningAttendance[],
   kidAge = DEFAULT_KID_AGE,
-  changes: Record<string, number> | null = null
+  changes: Record<string, number> | null = null,
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ): { parts: LifafaPart[]; usualTotal: number; total: number } {
-  const hc = familyHeadcount(family, rows, kidAge)
+  const hc = familyHeadcount(family, rows, kidAge, smallKidAge)
   if (hc.total === 0) return { parts: [], usualTotal: 0, total: 0 }
   const lifafaRules = rules.filter(r => r.type === 'lifafa')
   const members = invitedMembers(family, rows)
   const AGE_LABEL = { kid: 'Kid', adult: 'Adult', senior: 'Senior' } as const
+  const ageLabel = (m: PlanningMember) => {
+    const g = classifyMember(m, kidAge)
+    return g === 'kid' && m.age !== null && m.age !== undefined && m.age < smallKidAge ? 'Small kid' : AGE_LABEL[g]
+  }
 
   const memberParts = members.map(m => {
     const usual = lifafaRules
       .filter(r => r.distribution === 'per_person')
-      .filter(r => (hasChosenPeople(r) ? r.target_member_ids!.includes(m.id) : ruleAppliesToFamily(r, family) && memberInGroup(r.target_gender, m, kidAge)))
+      .filter(r => (hasChosenPeople(r) ? r.target_member_ids!.includes(m.id) : ruleAppliesToFamily(r, family) && memberInGroup(r.target_gender, m, kidAge, smallKidAge)))
       .reduce((s, r) => s + giftUnitPrice(r, family), 0)
-    return { key: m.id, label: m.name || 'Guest', detail: AGE_LABEL[classifyMember(m, kidAge)], usual }
+    return { key: m.id, label: m.name || 'Guest', detail: ageLabel(m), usual }
   })
   const familyUsual = lifafaRules
     .filter(r => r.distribution === 'per_family')
     .filter(r => (hasChosenPeople(r) ? members.some(m => r.target_member_ids!.includes(m.id)) : ruleAppliesToFamily(r, family)))
     .reduce((s, r) => s + giftUnitPrice(r, family), 0)
   // Whatever the rules give beyond named people (expected guests without names)
-  const usualTotal = giftLines(lifafaRules, [], [family], rows, kidAge).reduce((s, l) => s + l.total, 0)
+  const usualTotal = giftLines(lifafaRules, [], [family], rows, kidAge, [], smallKidAge).reduce((s, l) => s + l.total, 0)
   const othersUsual = Math.max(0, usualTotal - familyUsual - memberParts.reduce((s, p) => s + p.usual, 0))
   const unnamed = Math.max(0, hc.total - members.length)
 
@@ -380,10 +404,11 @@ export function exceptionAmount(
   rules: GiftingRule[],
   family: PlanningFamily,
   rows: PlanningAttendance[],
-  kidAge = DEFAULT_KID_AGE
+  kidAge = DEFAULT_KID_AGE,
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ) {
   if (override.breakdown && Object.keys(override.breakdown).length > 0) {
-    return lifafaBreakdown(rules, family, rows, kidAge, override.breakdown).total
+    return lifafaBreakdown(rules, family, rows, kidAge, override.breakdown, smallKidAge).total
   }
   return Number(override.lifafa_amount) || 0
 }
@@ -414,7 +439,8 @@ export function giftLines(
   families: PlanningFamily[],
   rows: PlanningAttendance[],
   kidAge = DEFAULT_KID_AGE,
-  giftCounts: GiftCount[] = []
+  giftCounts: GiftCount[] = [],
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ): GiftLine[] {
   const overrideByFamily = new Map(overrides.map(o => [o.family_id, o]))
   const countKey = (ruleId: string, familyId: string) => `${ruleId}:${familyId}`
@@ -422,14 +448,14 @@ export function giftLines(
   const lines: GiftLine[] = []
 
   families.forEach(family => {
-    const hc = familyHeadcount(family, rows, kidAge)
+    const hc = familyHeadcount(family, rows, kidAge, smallKidAge)
     if (hc.total === 0) return
     const override = overrideByFamily.get(family.id)
     if (override) {
       // Replaces this family's lifafa rules (they are skipped below), so nothing is counted twice
-      const amount = exceptionAmount(override, rules, family, rows, kidAge)
+      const amount = exceptionAmount(override, rules, family, rows, kidAge, smallKidAge)
       const people = override.breakdown
-        ? lifafaBreakdown(rules, family, rows, kidAge, override.breakdown).parts
+        ? lifafaBreakdown(rules, family, rows, kidAge, override.breakdown, smallKidAge).parts
             .filter(p => p.amount > 0)
             .map(p => `${p.label} ₹${Math.round(p.amount).toLocaleString('en-IN')}`)
         : []
@@ -497,13 +523,14 @@ export function computeGifting(
   families: PlanningFamily[],
   rows: PlanningAttendance[],
   kidAge = DEFAULT_KID_AGE,
-  giftCounts: GiftCount[] = []
+  giftCounts: GiftCount[] = [],
+  smallKidAge = DEFAULT_SMALL_KID_AGE
 ): GiftingSummary {
-  const lines = giftLines(rules, overrides, families, rows, kidAge, giftCounts)
+  const lines = giftLines(rules, overrides, families, rows, kidAge, giftCounts, smallKidAge)
   // What the rules would give families that have a lifafa exception (to show what was left out)
   const exceptionFamilies = new Set(overrides.map(o => o.family_id))
   const withoutExceptions = overrides.length
-    ? giftLines(rules.filter(r => r.type === 'lifafa'), [], families.filter(f => exceptionFamilies.has(f.id)), rows, kidAge, giftCounts)
+    ? giftLines(rules.filter(r => r.type === 'lifafa'), [], families.filter(f => exceptionFamilies.has(f.id)), rows, kidAge, giftCounts, smallKidAge)
     : []
 
   const ruleResults: RuleResult[] = rules.map(rule => {
@@ -523,10 +550,10 @@ export function computeGifting(
     .map(o => {
       const family = families.find(f => f.id === o.family_id)
       if (!family) return null
-      const hc = familyHeadcount(family, rows, kidAge)
+      const hc = familyHeadcount(family, rows, kidAge, smallKidAge)
       if (hc.total === 0) return null
       const replacedAmount = withoutExceptions.filter(l => l.familyId === family.id).reduce((sum, l) => sum + l.total, 0)
-      const amount = exceptionAmount(o, rules, family, rows, kidAge)
+      const amount = exceptionAmount(o, rules, family, rows, kidAge, smallKidAge)
       return { override: o, familyName: family.family_name || 'Family', replacedAmount, amount }
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
@@ -561,7 +588,7 @@ export const PLANNING_FAMILY_SELECT =
  */
 export async function recalcFunctionGifting(supabase: SupabaseClient, functionId: string) {
   const [funcRes, attRes, rulesRes, overridesRes, countsRes] = await Promise.all([
-    supabase.from('functions').select('id, kid_age_threshold').eq('id', functionId).single(),
+    supabase.from('functions').select('*').eq('id', functionId).single(),
     supabase
       .from('function_attendance')
       .select(`family_id, member_id, adults_count, kids_count, rsvp_status, families (${PLANNING_FAMILY_SELECT})`)
@@ -581,7 +608,8 @@ export async function recalcFunctionGifting(supabase: SupabaseClient, functionId
     familiesFromAttendance(rows),
     rows,
     funcRes.data?.kid_age_threshold || DEFAULT_KID_AGE,
-    (countsRes.data || []) as GiftCount[]
+    (countsRes.data || []) as GiftCount[],
+    funcRes.data?.small_kid_age ?? DEFAULT_SMALL_KID_AGE
   )
   return saveGiftingPlan(supabase, functionId, summary.lifafaTotal, summary.returnGiftTotal)
 }

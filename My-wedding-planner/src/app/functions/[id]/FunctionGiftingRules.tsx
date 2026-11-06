@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   computeGifting,
+  DEFAULT_SMALL_KID_AGE,
   GIFT_KINDS,
   giftLines,
   giftUnitPrice,
@@ -33,6 +34,12 @@ type Person = { id: string; name: string; family: string }
 const TIERS: Tier[] = ['tier_1', 'tier_2', 'tier_3']
 const TIER_SHORT: Record<Tier, string> = { tier_1: 'Hosts', tier_2: 'Close', tier_3: 'Extended' }
 
+const AGE_PRESETS: RuleInput[] = [
+  { rule_name: 'Adults', type: 'lifafa', distribution: 'per_person', amount: 1100, target_side: 'both', target_tier: 'all', target_gender: 'Adults' },
+  { rule_name: 'Kids', type: 'lifafa', distribution: 'per_person', amount: 500, target_side: 'both', target_tier: 'all', target_gender: 'OlderKids' },
+  { rule_name: 'Small kids', type: 'lifafa', distribution: 'per_person', amount: 250, target_side: 'both', target_tier: 'all', target_gender: 'SmallKids' }
+]
+
 const PRESETS: RuleInput[] = [
   { rule_name: 'Close Circle – Adults', type: 'lifafa', distribution: 'per_person', amount: 1100, target_side: 'both', target_tier: 'tier_2', target_gender: 'Adults' },
   { rule_name: 'Extended – Adults', type: 'lifafa', distribution: 'per_person', amount: 500, target_side: 'both', target_tier: 'tier_3', target_gender: 'Adults' },
@@ -46,6 +53,7 @@ const familyLabel = (name?: string | null) =>
 export default function FunctionGiftingRules({
   functionId,
   initialKidAge,
+  initialSmallKidAge = DEFAULT_SMALL_KID_AGE,
   canEdit,
   initialRules,
   initialOverrides,
@@ -59,6 +67,7 @@ export default function FunctionGiftingRules({
 }: {
   functionId: string
   initialKidAge: number
+  initialSmallKidAge?: number
   canEdit: boolean
   initialRules: GiftingRule[]
   initialOverrides: GiftOverride[]
@@ -75,6 +84,8 @@ export default function FunctionGiftingRules({
   const [overrides, setOverrides] = useState<GiftOverride[]>(initialOverrides)
   const [kidAge, setKidAge] = useState(initialKidAge)
   const [kidAgeDraft, setKidAgeDraft] = useState(String(initialKidAge))
+  const [smallAge, setSmallAge] = useState(initialSmallKidAge)
+  const [smallAgeDraft, setSmallAgeDraft] = useState(String(initialSmallKidAge))
   const [ruleModal, setRuleModal] = useState<{ open: boolean; editing: GiftingRule | null }>({ open: false, editing: null })
   const [overrideModal, setOverrideModal] = useState<{ open: boolean; editing: GiftOverride | null }>({ open: false, editing: null })
   const [loading, setLoading] = useState(false)
@@ -114,7 +125,7 @@ export default function FunctionGiftingRules({
     } else if (editing) {
       // Saved before person-by-person amounts: keep the same total as one family lifafa
       const fam = families.find(f => f.id === familyId)
-      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge).parts : []
+      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge, null, smallAge).parts : []
       setOvAmounts(Object.fromEntries(parts.map(p => [p.key, p.key === 'family' ? String(editing.lifafa_amount) : '0'])))
     } else {
       setOvAmounts({})
@@ -139,8 +150,8 @@ export default function FunctionGiftingRules({
   }
 
   const summary = useMemo(
-    () => computeGifting(rules, overrides, families, attendance, kidAge, counts),
-    [rules, overrides, families, attendance, kidAge, counts]
+    () => computeGifting(rules, overrides, families, attendance, kidAge, counts, smallAge),
+    [rules, overrides, families, attendance, kidAge, counts, smallAge]
   )
 
   // Keep the stored totals (and the budget's "Lifafas & Gifts" line) in step
@@ -182,8 +193,8 @@ export default function FunctionGiftingRules({
   const ovFamilyObj = families.find(f => f.id === ovFamily)
   const ovChanges: Record<string, number> = {}
   Object.entries(ovAmounts).forEach(([k, v]) => { if (v.trim() !== '' && Number.isFinite(Number(v))) ovChanges[k] = Math.max(0, Number(v)) })
-  const ovBreakdown = ovFamilyObj ? lifafaBreakdown(rules, ovFamilyObj, attendance, kidAge, ovChanges) : null
-  const ovUsualItems = ovFamilyObj ? giftLines(itemRules, [], [ovFamilyObj], attendance, kidAge, []) : []
+  const ovBreakdown = ovFamilyObj ? lifafaBreakdown(rules, ovFamilyObj, attendance, kidAge, ovChanges, smallAge) : null
+  const ovUsualItems = ovFamilyObj ? giftLines(itemRules, [], [ovFamilyObj], attendance, kidAge, [], smallAge) : []
   const parseNum = (v: string | undefined) => (v === undefined || v.trim() === '' || !Number.isFinite(Number(v)) ? null : Math.max(0, Number(v)))
   const ovItemRows = ovFamilyObj
     ? itemRules.map(rule => {
@@ -269,6 +280,47 @@ export default function FunctionGiftingRules({
       toast.success('Starter lifafa rules added')
     }
     setLoading(false)
+  }
+
+  const groupLabel = (g: GiftingRule['target_gender']) =>
+    g === 'Kids' ? `Kids (under ${kidAge})`
+      : g === 'SmallKids' ? `Small kids (under ${smallAge})`
+        : g === 'OlderKids' ? `Kids ${smallAge}–${kidAge - 1}`
+          : TARGET_GROUP_LABELS[g] || g
+
+  // Adults / kids / small kids at different amounts, e.g. ₹1,100 · ₹500 · ₹250
+  const handleAddAgePresets = async () => {
+    if (!window.confirm(`Add 3 lifafa rules for everyone invited?\n\n• Adults (${kidAge}+): ₹1,100 each\n• Kids ${smallAge}–${kidAge - 1}: ₹500 each\n• Small kids (under ${smallAge}): ₹250 each\n\nYou can change the amounts, sides or circles afterwards.`)) return
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('function_gifting_rules')
+      .insert(AGE_PRESETS.map(p => ({ ...p, function_id: functionId })))
+      .select()
+    if (error) {
+      toast.error(/check constraint|target_gender/.test(error.message) ? 'Run supabase/18_small_kids.sql in the Supabase SQL editor first.' : `Could not add rules: ${error.message}`)
+    } else if (data) {
+      setRules(prev => [...prev, ...data])
+      toast.success('Adults, kids and small kids lifafas added')
+    }
+    setLoading(false)
+  }
+
+  const commitSmallAge = async () => {
+    const next = Number(smallAgeDraft)
+    if (!Number.isInteger(next) || next < 1 || next >= kidAge) {
+      toast.error(`Small-kid age must be a whole number from 1 to ${kidAge - 1}`)
+      setSmallAgeDraft(String(smallAge))
+      return
+    }
+    if (next === smallAge) return
+    const { error } = await supabase.rpc('set_function_small_kid_age', { p_function_id: functionId, p_age: next })
+    if (error) {
+      toast.error(/set_function_small_kid_age|function/.test(error.message) ? 'Run supabase/18_small_kids.sql in the Supabase SQL editor first.' : `Could not update: ${error.message}`)
+      setSmallAgeDraft(String(smallAge))
+    } else {
+      setSmallAge(next)
+      toast.success(`Small kids are now under ${next}`)
+    }
   }
 
   // ---- Kid age -----------------------------------------------------------
@@ -395,9 +447,14 @@ export default function FunctionGiftingRules({
         <div className="text-center py-4 space-y-3">
           <p className="text-sm font-data text-maroon/50 italic">No gifting rules yet.</p>
           {canEdit && (
-            <Button size="sm" variant="outline" disabled={loading} onClick={handleAddPresets} className="border-marigold/50 text-maroon hover:bg-marigold/10 text-xs rounded-full">
-              <Sparkles className="w-3.5 h-3.5 mr-1 text-marigold" /> Use starter rules (₹1100 / ₹500 / ₹250 kids)
-            </Button>
+            <div className="flex flex-col items-center gap-2">
+              <Button size="sm" disabled={loading} onClick={handleAddAgePresets} className="bg-maroon text-ivory hover:bg-maroon/90 text-xs rounded-full">
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-marigold" /> Adults ₹1,100 · Kids ₹500 · Small kids ₹250
+              </Button>
+              <Button size="sm" variant="outline" disabled={loading} onClick={handleAddPresets} className="border-marigold/50 text-maroon hover:bg-marigold/10 text-xs rounded-full">
+                Or by circle (Close ₹1,100 / Extended ₹500 / Kids ₹250)
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -417,7 +474,7 @@ export default function FunctionGiftingRules({
                       <span>•</span>
                       <span>{TIER_LABELS[rule.target_tier]}</span>
                       <span>•</span>
-                      <span>{rule.target_gender === 'Kids' ? `Kids (under ${kidAge})` : TARGET_GROUP_LABELS[rule.target_gender]}</span>
+                      <span>{groupLabel(rule.target_gender)}</span>
                     </>
                   )}
                   <span>•</span>
@@ -477,7 +534,7 @@ export default function FunctionGiftingRules({
                     </p>
                     {override.breakdown && (() => {
                       const fam = families.find(f => f.id === override.family_id)
-                      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge, override.breakdown).parts.filter(p => p.changed) : []
+                      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge, override.breakdown, smallAge).parts.filter(p => p.changed) : []
                       return parts.length > 0 && (
                         <p className="text-[10px] font-data font-semibold text-maroon/80">Changed: {parts.map(p => `${p.label} ${rupees(p.amount)}`).join(' · ')}</p>
                       )
@@ -499,6 +556,12 @@ export default function FunctionGiftingRules({
                 </div>
               ))}
             </div>
+          )}
+
+          {canEdit && !rules.some(r => r.target_gender === 'SmallKids' || r.target_gender === 'OlderKids') && (
+            <button type="button" disabled={loading} onClick={handleAddAgePresets} className="w-full rounded-xl border border-dashed border-marigold/50 px-3 py-2.5 text-left font-data text-xs font-semibold text-maroon hover:bg-marigold/10">
+              <Sparkles className="mr-1 inline h-3.5 w-3.5 text-marigold" /> Add different lifafas by age: adults ₹1,100 · kids ₹500 · small kids ₹250
+            </button>
           )}
 
           {/* Totals + budget link */}
@@ -671,7 +734,9 @@ export default function FunctionGiftingRules({
                   <select name="target_gender" defaultValue={editingRule?.target_gender || 'All'} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm">
                     <option value="All">Everyone</option>
                     <option value="Adults">Adults ({kidAge}+, incl. seniors)</option>
-                    <option value="Kids">Kids (under {kidAge})</option>
+                    <option value="Kids">All kids (under {kidAge})</option>
+                    <option value="OlderKids">Kids {smallAge}–{kidAge - 1}</option>
+                    <option value="SmallKids">Small kids (under {smallAge})</option>
                     <option value="Seniors">Seniors (60+)</option>
                     <option value="Male">Gents only</option>
                     <option value="Female">Ladies only</option>
@@ -690,8 +755,21 @@ export default function FunctionGiftingRules({
                       className="w-14 h-7 text-xs bg-white border-marigold/40"
                       aria-label="Kid age cut-off"
                     />
-                    <span>years, for this function.</span>
+                    <span>years; small kids under</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={24}
+                      value={smallAgeDraft}
+                      onChange={e => setSmallAgeDraft(e.target.value)}
+                      onBlur={commitSmallAge}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() } }}
+                      className="w-14 h-7 text-xs bg-white border-marigold/40"
+                      aria-label="Small-kid age cut-off"
+                    />
+                    <span>, for this function.</span>
                   </div>
+                  <p className="text-[10px] text-maroon/50 font-data">Kids without an age filled in count as older kids.</p>
                 </div>
                 </>
                 )}
