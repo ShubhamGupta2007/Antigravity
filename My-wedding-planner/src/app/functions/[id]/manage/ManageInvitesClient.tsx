@@ -266,7 +266,7 @@ export default function ManageInvitesClient({
           const memberKey = `${f.id}-${m.id}`
           const initiallyAttendingMem = initialAttendance.some(a => a.family_id === f.id && a.member_id === m.id && a.is_attending)
           if (attendanceMap[memberKey] && !initiallyAttendingMem) {
-            upserts.push({ function_id: func.id, family_id: f.id, member_id: m.id, is_attending: true })
+            upserts.push({ function_id: func.id, family_id: f.id, member_id: m.id, is_attending: true, rsvp_status: 'invited' })
           } else if (!attendanceMap[memberKey] && initiallyAttendingMem) {
             toDelete.push({ family_id: f.id, member_id: m.id })
           }
@@ -274,7 +274,7 @@ export default function ManageInvitesClient({
       })
 
       if (upserts.length > 0) {
-        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id', defaultToNull: false })
         if (error) throw error
       }
 

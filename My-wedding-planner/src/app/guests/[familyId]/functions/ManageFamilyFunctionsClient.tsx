@@ -128,7 +128,7 @@ export default function ManageFamilyFunctionsClient({
       })
 
       if (upserts.length > 0) {
-        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id' })
+        const { error } = await supabase.from('function_attendance').upsert(upserts, { onConflict: 'function_id,family_id,member_id', defaultToNull: false })
         if (error) throw error
       }
 
