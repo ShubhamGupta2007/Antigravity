@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown, Plus, Search } from 'lucide-react'
-import { DEFAULT_KID_AGE, familyHeadcount } from '@/lib/functionPlanning'
+import { familyCount } from '@/lib/guests'
 import { ShagunBadge, type FamilyShagun } from './ShagunHistory'
 import FamilyPanel, { type Couple, type GuestFamily } from './FamilyPanel'
 
@@ -17,16 +17,6 @@ const TIER_TITLE: Record<string, string> = {
   tier_1: '👑 Hosts & immediate family',
   tier_2: '🤝 Close circle',
   tier_3: '🏡 Extended & neighbours'
-}
-
-/** Expected guests for a family on the list: named members, padded up to its expected counts. */
-export function familyCount(f: GuestFamily) {
-  const hc = familyHeadcount(
-    { ...f, family_members: f.family_members || [] },
-    [{ family_id: f.id, member_id: null }],
-    DEFAULT_KID_AGE
-  )
-  return { adults: hc.adults - hc.seniors, seniors: hc.seniors, kids: hc.kids, total: hc.total }
 }
 
 const familyLabel = (name: string) => (name.toLowerCase().endsWith('family') ? name : `${name} Family`)

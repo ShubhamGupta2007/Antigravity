@@ -4,7 +4,8 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import GuestListManager, { familyCount } from '@/components/GuestListManager'
+import GuestListManager from '@/components/GuestListManager'
+import { familyCount } from '@/lib/guests'
 import type { GuestFamily } from '@/components/FamilyPanel'
 
 export default async function GuestsPage() {
