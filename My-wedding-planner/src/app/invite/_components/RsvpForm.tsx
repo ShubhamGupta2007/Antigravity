@@ -89,7 +89,15 @@ export default function RsvpForm({
     setDraft('')
     if (!name || people.some(p => p.name.toLowerCase() === name.toLowerCase())) return
     setAdded(prev => [...prev, name])
-    setNames(prev => ({ ...prev, [fnId]: { declined: false, selected: [...prev[fnId].selected, `new:${name}`] } }))
+    // Coming to every celebration unless the family said they can't make that one; they can untick anywhere
+    setNames(prev =>
+      Object.fromEntries(
+        Object.entries(prev).map(([id, a]) => [
+          id,
+          id === fnId ? { declined: false, selected: [...a.selected, `new:${name}`] } : a.declined ? a : { ...a, selected: [...a.selected, `new:${name}`] }
+        ])
+      )
+    )
   }
 
   const answered = functions.filter(f =>
@@ -132,12 +140,11 @@ export default function RsvpForm({
       if (namesMode) {
         const a = names[f.id]
         if (!a.selected.length) return a.declined ? [`${f.name}: we’ll miss you`] : []
-        const kids = a.selected.filter(k => people.find(p => p.key === k)?.isKid).length
-        return [`${f.name}: ${guestsLabel(a.selected.length, kids)}`]
+        return [`${f.name}: coming 🙏`]
       }
       const c = counts[f.id]
       if (c.size === null) return []
-      return [c.size === 0 ? `${f.name}: we’ll miss you` : `${f.name}: ${guestsLabel(c.size, Math.min(c.kids, c.size - 1))}`]
+      return [c.size === 0 ? `${f.name}: we’ll miss you` : `${f.name}: coming 🙏`]
     })
     return (
       <section className="flex flex-col items-center gap-3.5 px-6 py-14 text-center">
@@ -182,7 +189,6 @@ export default function RsvpForm({
 
             {namesMode ? (() => {
               const a = names[f.id]
-              const kids = a.selected.filter(k => people.find(p => p.key === k)?.isKid).length
               const quiet = !a.declined && a.selected.length === 0
               return (
                 <div className="flex flex-col gap-3 px-[18px] py-4">
@@ -230,7 +236,13 @@ export default function RsvpForm({
                   )}
                   <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-[#F3E7D8] pt-2.5">
                     <span aria-live="polite" className={quiet ? 'text-sm font-semibold text-[#7A5560]' : `font-display text-xl font-semibold italic ${a.declined ? 'text-[#8E1F2F]' : 'text-[#3E5A35]'}`}>
-                      {a.declined ? 'We’ll miss you' : a.selected.length ? guestsLabel(a.selected.length, kids) : 'Tap the names of who’s coming'}
+                      {a.declined
+                        ? 'We’ll miss you'
+                        : a.selected.length === people.length && people.length > 1
+                          ? 'Everyone’s coming'
+                          : a.selected.length
+                            ? `Coming: ${a.selected.map(k => people.find(p => p.key === k)?.name).filter(Boolean).join(', ')}`
+                            : 'Tap the names of who’s coming'}
                     </span>
                     {!closed && (
                       <div className="flex gap-1.5">

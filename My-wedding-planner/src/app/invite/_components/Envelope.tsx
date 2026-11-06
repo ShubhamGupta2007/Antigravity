@@ -122,8 +122,9 @@ export default function Envelope({ code, title, bride, groom }: { code: string; 
           disabled={leaving}
           className="inv-fade inv-enter relative z-10 mt-7 flex h-14 w-full max-w-[320px] items-center justify-center gap-2.5 rounded-full bg-gradient-to-r from-[#F2C46D] via-[#FFE6A8] to-[#F2C46D] font-data text-base font-bold text-[#3A0B20] shadow-[0_10px_26px_rgba(0,0,0,0.35)]"
           style={{ opacity: showEnter ? 1 : 0 }}
+          aria-label="Enter the invitation"
         >
-          {leaving ? '✨ Welcome ✨' : 'Enter'}
+          <span className="font-[family-name:var(--font-devanagari)] text-[19px]">{leaving ? '✨ स्वागत है ✨' : '🙏 पधारिए'}</span>
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
         </button>
       )}
