@@ -12,6 +12,8 @@ import {
   computeGifting,
   GIFT_KINDS,
   invitedMembers,
+  exceptionAmount,
+  lifafaBreakdown,
   saveGiftingPlan,
   TARGET_GROUP_LABELS,
   TIER_LABELS,
@@ -85,6 +87,29 @@ export default function FunctionGiftingRules({
   const [chosen, setChosen] = useState<string[]>([])
   const [peopleQuery, setPeopleQuery] = useState('')
 
+  // Family exception form: amounts per person ('' = their usual amount)
+  const [ovFamily, setOvFamily] = useState('')
+  const [ovAmounts, setOvAmounts] = useState<Record<string, string>>({})
+  const [ovNote, setOvNote] = useState('')
+
+  const openOverrideForm = (editing: GiftOverride | null) => {
+    setSubmitError(null)
+    const familyId = editing?.family_id || invitedFamilies[0]?.id || ''
+    setOvFamily(familyId)
+    setOvNote(editing?.note || '')
+    if (editing?.breakdown) {
+      setOvAmounts(Object.fromEntries(Object.entries(editing.breakdown).map(([k, v]) => [k, String(v)])))
+    } else if (editing) {
+      // Saved before person-by-person amounts: keep the same total as one family lifafa
+      const fam = families.find(f => f.id === familyId)
+      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge).parts : []
+      setOvAmounts(Object.fromEntries(parts.map(p => [p.key, p.key === 'family' ? String(editing.lifafa_amount) : '0'])))
+    } else {
+      setOvAmounts({})
+    }
+    setOverrideModal({ open: true, editing })
+  }
+
   const openRuleForm = (editing: GiftingRule | null) => {
     setSubmitError(null)
     setKind(editing?.type || 'lifafa')
@@ -141,6 +166,11 @@ export default function FunctionGiftingRules({
     [families, attendance]
   )
   const personName = (id: string) => people.find(p => p.id === id)?.name
+
+  const ovFamilyObj = families.find(f => f.id === ovFamily)
+  const ovChanges: Record<string, number> = {}
+  Object.entries(ovAmounts).forEach(([k, v]) => { if (v.trim() !== '' && Number.isFinite(Number(v))) ovChanges[k] = Math.max(0, Number(v)) })
+  const ovBreakdown = ovFamilyObj ? lifafaBreakdown(rules, ovFamilyObj, attendance, kidAge, ovChanges) : null
 
   // ---- Rules -------------------------------------------------------------
   const handleDeleteRule = async (id: string) => {
@@ -237,12 +267,20 @@ export default function FunctionGiftingRules({
   const handleSaveOverride = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
-    const formData = new FormData(e.currentTarget)
+    if (!ovBreakdown) {
+      setLoading(false)
+      return
+    }
+    // Only amounts that differ from the usual are kept, so later rule changes still flow through
+    const changed: Record<string, number> = {}
+    ovBreakdown.parts.forEach(p => { if (p.changed && p.amount !== p.usual) changed[p.key] = p.amount })
+    const hadBreakdown = !!overrideModal.editing?.breakdown
     const payload = {
       function_id: functionId,
-      family_id: String(formData.get('family_id')),
-      lifafa_amount: Number(formData.get('lifafa_amount')),
-      note: String(formData.get('note') || '').trim() || null
+      family_id: ovFamily,
+      lifafa_amount: ovBreakdown.total,
+      note: ovNote.trim() || null,
+      ...(Object.keys(changed).length > 0 || hadBreakdown ? { breakdown: Object.keys(changed).length > 0 ? changed : null } : {})
     }
     const { data, error } = await supabase
       .from('function_gift_overrides')
@@ -250,7 +288,7 @@ export default function FunctionGiftingRules({
       .select()
       .single()
     if (error) {
-      setSubmitError(error.message)
+      setSubmitError(/breakdown/.test(error.message) ? 'Run supabase/17_lifafa_per_person.sql in the Supabase SQL editor to set amounts person by person.' : error.message)
     } else if (data) {
       setOverrides(prev => [...prev.filter(o => o.family_id !== data.family_id), data])
       setOverrideModal({ open: false, editing: null })
@@ -278,35 +316,14 @@ export default function FunctionGiftingRules({
         </h2>
         {canEdit && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={loading} onClick={() => { setSubmitError(null); setOverrideModal({ open: true, editing: null }) }} className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
-              Family Exception
+            <Button size="sm" variant="outline" disabled={loading} onClick={() => openOverrideForm(null)} className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
+              Family exception
             </Button>
             <Button size="sm" disabled={loading} onClick={() => openRuleForm(null)} className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">
               <Plus className="w-4 h-4 mr-1" /> Add Rule
             </Button>
           </div>
         )}
-      </div>
-
-      {/* Who counts as a kid */}
-      <div className="flex flex-wrap items-center gap-2 text-xs font-data text-maroon/70 mb-4">
-        <span>Kids are guests under</span>
-        {canEdit ? (
-          <Input
-            type="number"
-            min={1}
-            max={25}
-            value={kidAgeDraft}
-            onChange={e => setKidAgeDraft(e.target.value)}
-            onBlur={commitKidAge}
-            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-            className="w-16 h-7 text-xs bg-white border-marigold/40"
-            aria-label="Kid age cut-off"
-          />
-        ) : (
-          <span className="font-semibold text-maroon">{kidAge}</span>
-        )}
-        <span>years. Everyone else counts as an adult.</span>
       </div>
 
       {rules.length === 0 && overrides.length === 0 ? (
@@ -380,14 +397,23 @@ export default function FunctionGiftingRules({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-maroon">{familyLabel(familyName)}</p>
                     <p className="text-[10px] text-maroon/60 font-data">
-                      Rules would give {rupees(replacedAmount)}{override.note ? ` • ${override.note}` : ''}
+                      Usually {rupees(replacedAmount)}{override.note ? ` • ${override.note}` : ''}
                     </p>
+                    {override.breakdown && (() => {
+                      const fam = families.find(f => f.id === override.family_id)
+                      const parts = fam ? lifafaBreakdown(rules, fam, attendance, kidAge, override.breakdown).parts.filter(p => p.changed) : []
+                      return parts.length > 0 && (
+                        <p className="text-[10px] font-data font-semibold text-maroon/80">Changed: {parts.map(p => `${p.label} ${rupees(p.amount)}`).join(' · ')}</p>
+                      )
+                    })()}
                   </div>
                   <div className="flex items-center gap-3 ml-auto">
-                    <span className="text-sm font-bold text-maroon">{rupees(override.lifafa_amount)}</span>
+                    <span className="text-sm font-bold text-maroon">
+                      {(() => { const fam = families.find(f => f.id === override.family_id); return rupees(fam ? exceptionAmount(override, rules, fam, attendance, kidAge) : override.lifafa_amount) })()}
+                    </span>
                     {canEdit && (
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" aria-label="Edit exception" onClick={() => { setSubmitError(null); setOverrideModal({ open: true, editing: override }) }} className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8">
+                        <Button variant="ghost" size="icon" aria-label="Edit exception" onClick={() => openOverrideForm(override)} className="text-maroon/50 hover:text-maroon hover:bg-marigold/10 h-8 w-8">
                           <Edit2 className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="icon" aria-label="Remove exception" disabled={loading} onClick={() => handleDeleteOverride(override.id)} className="text-rust-red/50 hover:text-rust-red hover:bg-rust-red/10 h-8 w-8">
@@ -571,6 +597,21 @@ export default function FunctionGiftingRules({
                     <option value="Female">Ladies only</option>
                   </select>
                   <p className="text-[10px] text-maroon/50 font-data">Gents / Ladies / Seniors only count members whose gender or age is filled in.</p>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] font-data text-maroon/70">
+                    <span>Kids are guests under</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={kidAgeDraft}
+                      onChange={e => setKidAgeDraft(e.target.value)}
+                      onBlur={commitKidAge}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() } }}
+                      className="w-14 h-7 text-xs bg-white border-marigold/40"
+                      aria-label="Kid age cut-off"
+                    />
+                    <span>years, for this function.</span>
+                  </div>
                 </div>
                 </>
                 )}
@@ -589,34 +630,63 @@ export default function FunctionGiftingRules({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-maroon/20 backdrop-blur-sm">
           <div className="bg-ivory w-full max-w-md rounded-2xl border border-marigold/30 shadow-2xl overflow-hidden">
             <div className="p-4 border-b border-marigold/10 bg-white flex justify-between items-center">
-              <h3 className="font-display font-bold text-maroon text-lg">Family Lifafa Exception</h3>
+              <h3 className="font-display font-bold text-maroon text-lg">Family lifafa exception</h3>
               <button onClick={() => setOverrideModal({ open: false, editing: null })} className="text-maroon/50 hover:text-maroon" aria-label="Close">✕</button>
             </div>
             <form onSubmit={handleSaveOverride} className="p-5 space-y-4">
-              <p className="text-xs font-data text-maroon/60">This family gets this fixed lifafa amount for this function instead of whatever the lifafa rules would give them.</p>
+              <p className="text-xs font-data text-maroon/60">Change what each person in this family gets. Leave a box empty to keep their usual amount.</p>
               {submitError && (
-                <div className="p-3 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded-lg font-data font-semibold">Error saving: {submitError}</div>
+                <div className="p-3 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded-lg font-data font-semibold">{submitError}</div>
               )}
               {invitedFamilies.length === 0 ? (
                 <p className="text-sm text-maroon/60 italic">Invite families to this function first.</p>
               ) : (
                 <>
                   <div className="space-y-1">
-                    <Label className="text-xs text-maroon font-semibold">Family</Label>
-                    <select name="family_id" defaultValue={overrideModal.editing?.family_id} required disabled={!!overrideModal.editing} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm disabled:opacity-70">
+                    <Label htmlFor="ov-family" className="text-xs text-maroon font-semibold">Family</Label>
+                    <select id="ov-family" value={ovFamily} onChange={e => { setOvFamily(e.target.value); setOvAmounts({}) }} disabled={!!overrideModal.editing} className="w-full bg-white border border-marigold/50 rounded-md h-10 px-3 text-sm disabled:opacity-70">
                       {invitedFamilies.map(f => (
                         <option key={f.id} value={f.id}>{familyLabel(f.family_name)}</option>
                       ))}
                     </select>
-                    {overrideModal.editing && <input type="hidden" name="family_id" value={overrideModal.editing.family_id} />}
                   </div>
+
+                  {ovBreakdown && (
+                    <div className="rounded-xl border border-marigold/25 bg-white">
+                      <div className="grid grid-cols-[1fr_auto_6.5rem] items-center gap-x-3 border-b border-marigold/15 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-maroon/50">
+                        <span>Who</span><span className="text-right">Usual</span><span>Give</span>
+                      </div>
+                      <ul className="divide-y divide-marigold/10">
+                        {ovBreakdown.parts.map(p => (
+                          <li key={p.key} className="grid grid-cols-[1fr_auto_6.5rem] items-center gap-x-3 px-3 py-2">
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-maroon">{p.label}</span>
+                              <span className="block text-[10px] text-maroon/50 font-data">{p.detail}</span>
+                            </span>
+                            <span className="text-right text-xs font-data text-maroon/60">{rupees(p.usual)}</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              aria-label={`Lifafa for ${p.label}`}
+                              placeholder={String(p.usual)}
+                              value={ovAmounts[p.key] ?? ''}
+                              onChange={e => setOvAmounts(prev => ({ ...prev, [p.key]: e.target.value }))}
+                              className={`h-9 text-sm ${p.changed && p.amount !== p.usual ? 'border-maroon bg-marigold/10 font-semibold' : 'bg-white border-marigold/40'}`}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center justify-between gap-3 border-t border-marigold/20 bg-marigold/10 px-3 py-2.5 rounded-b-xl">
+                        <span className="text-xs font-data text-maroon/70">Usually {rupees(ovBreakdown.usualTotal)}</span>
+                        <span className="font-display text-lg font-bold text-maroon">Total {rupees(ovBreakdown.total)}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-1">
-                    <Label className="text-xs text-maroon font-semibold">Total lifafa for this family (₹)</Label>
-                    <Input name="lifafa_amount" type="number" min={0} required defaultValue={overrideModal.editing?.lifafa_amount} placeholder="2100" className="bg-white border-marigold/50 text-sm h-10" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-maroon font-semibold">Note (optional)</Label>
-                    <Input name="note" defaultValue={overrideModal.editing?.note || ''} placeholder="e.g. Mama ji – extra shagun" className="bg-white border-marigold/50 text-sm h-10" />
+                    <Label htmlFor="ov-note" className="text-xs text-maroon font-semibold">Note (optional)</Label>
+                    <Input id="ov-note" value={ovNote} onChange={e => setOvNote(e.target.value)} placeholder="e.g. Dadi ji – extra shagun" className="bg-white border-marigold/50 text-sm h-10" />
                   </div>
                 </>
               )}

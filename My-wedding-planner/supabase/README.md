@@ -16,6 +16,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `14_guest_invitations.sql` | personal guest invitations: invite link per family, phone check, guest-facing function details, RSVP from the invitation |
 | `15_ritual_activities.sql` | ritual entries can be something done (tilak, chunni chadhana), not only something given |
 | `16_gifts.sql` | gift types (lifafa, bhaji, gift item, return gift), prices per circle and per family, gifts for chosen people, and the Give & track checklist |
+| `17_lifafa_per_person.sql` | family lifafa exceptions set person by person |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.

@@ -62,7 +62,7 @@ export default async function FunctionDetailPage({
   // Fetch expenses for this function
   const { data: expenses } = await supabase
     .from('expenses')
-    .select('amount')
+    .select('amount, status, sub_item_id')
     .eq('function_id', func.id)
 
   const totalSpent = (expenses || []).reduce((acc, curr) => acc + Number(curr.amount), 0)
@@ -390,7 +390,7 @@ export default async function FunctionDetailPage({
     {
       key: 'budget', icon: '💰', title: 'Budget',
       value: maxBudget > 0 ? `${Math.round(budgetPercentage)}%` : shortRupees(totalSpent),
-      sub: maxBudget > 0 ? `${shortRupees(totalSpent)} of ${shortRupees(maxBudget)}` : 'spent · no limit set',
+      sub: maxBudget > 0 ? `${shortRupees(totalSpent)} of ${shortRupees(maxBudget)}${subItemsPlannedTotal > 0 ? ` · ${shortRupees(Math.max(0, maxBudget - subItemsPlannedTotal))} free` : ''}` : 'spent · no limit set',
       bar: maxBudget > 0 ? budgetPercentage : undefined,
       flag: overbudget ? { text: 'Over', tone: 'bad' } : subItemsOverAllocated ? { text: 'Over-planned', tone: 'bad' } : undefined
     },
@@ -546,37 +546,115 @@ export default async function FunctionDetailPage({
     </div>
   )
 
+  // ---- Budget: allocated vs spent ------------------------------------------
+  const subItems = ((linkedSubItems || []) as { id: string; name: string; target_budget: number | null; is_auto?: boolean }[])
+  const expenseRows = (expenses || []) as { amount: number | null; status: string | null; sub_item_id: string | null }[]
+  const paidTotal = expenseRows.filter(e => String(e.status) !== 'due').reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  const dueTotal = totalSpent - paidTotal
+  const allocated = subItemsPlannedTotal
+  const spentByItem = new Map<string, number>()
+  expenseRows.forEach(e => { if (e.sub_item_id) spentByItem.set(e.sub_item_id, (spentByItem.get(e.sub_item_id) || 0) + (Number(e.amount) || 0)) })
+  const unlinkedSpent = expenseRows.filter(e => !e.sub_item_id || !subItems.some(i => i.id === e.sub_item_id)).reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  // Allocated money not spent yet (per item, so overspending one item doesn't hide another's balance)
+  const stillToSpend = subItems.reduce((s, i) => s + Math.max(0, (Number(i.target_budget) || 0) - (spentByItem.get(i.id) || 0)), 0)
+  const notAllocated = Math.max(0, maxBudget - allocated)
+  const barBase = Math.max(maxBudget, allocated, totalSpent, 1)
+  const pctOf = (n: number) => `${Math.max(0, Math.min(100, (n / barBase) * 100))}%`
+
   const budgetSection = (
     <section className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-5 border-b border-marigold/10 pb-3">
         <h2 className="text-xl font-display font-semibold text-maroon">💰 Budget</h2>
-        <Link href={`/budget/add?function_id=${func.id}`}>
-          <Button size="sm" className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">+ Log expense</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/budget/setup">
+            <Button size="sm" variant="outline" className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">Allocate</Button>
+          </Link>
+          <Link href={`/budget/add?function_id=${func.id}`}>
+            <Button size="sm" className="bg-maroon text-ivory hover:bg-maroon/90 h-8 text-xs rounded-full">+ Log expense</Button>
+          </Link>
+        </div>
       </div>
-      <div className="flex items-end justify-between gap-4 mb-2">
+
+      <div className="flex items-end justify-between gap-4 mb-3">
         <div>
-          <p className="text-[10px] uppercase tracking-wide font-data text-maroon/50">Spent</p>
-          <p className="text-3xl font-display font-bold text-maroon">{rupees(totalSpent)}</p>
-        </div>
-        <div className="text-right">
           <p className="text-[10px] uppercase tracking-wide font-data text-maroon/50">Budget</p>
-          <p className="text-lg font-data font-semibold text-maroon">{maxBudget > 0 ? rupees(maxBudget) : 'Not set'}</p>
+          <p className="text-3xl font-display font-bold text-maroon">{maxBudget > 0 ? rupees(maxBudget) : 'Not set'}</p>
         </div>
+        <p className={`text-right text-xs font-data ${overbudget ? 'text-rust-red font-semibold' : 'text-maroon/60'}`}>
+          {maxBudget <= 0 ? 'Set a limit in Budget Setup' : overbudget ? `⚠️ Over by ${rupees(totalSpent - maxBudget)}` : `${rupees(maxBudget - totalSpent)} left to spend`}
+        </p>
       </div>
-      {maxBudget > 0 && (
-        <div className="w-full h-2.5 bg-ivory rounded-full overflow-hidden mb-2">
-          <div className={`h-full rounded-full ${overbudget ? 'bg-rust-red' : budgetPercentage >= 80 ? 'bg-marigold' : 'bg-mehendi'}`} style={{ width: `${Math.min(budgetPercentage, 100)}%` }} />
-        </div>
-      )}
-      <p className={`text-xs font-data mb-5 ${overbudget ? 'text-rust-red font-semibold' : 'text-maroon/60'}`}>
-        {maxBudget <= 0 ? 'No budget limit set yet.' : overbudget ? `⚠️ Over budget by ${rupees(totalSpent - maxBudget)}` : `${rupees(maxBudget - totalSpent)} left`}
-      </p>
+
+      {/* Paid | due | allocated but not spent | not allocated */}
+      <div className="relative mb-2 flex h-3 w-full overflow-hidden rounded-full bg-ivory ring-1 ring-marigold/20" aria-hidden="true">
+        <span className="h-full bg-mehendi" style={{ width: pctOf(paidTotal) }} />
+        <span className="h-full bg-marigold" style={{ width: pctOf(dueTotal) }} />
+        <span className="h-full bg-marigold/30" style={{ width: pctOf(stillToSpend) }} />
+      </div>
+      <div className="mb-5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-data text-maroon/60">
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-mehendi" />Paid</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-marigold" />Due</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-marigold/30" />Allocated, not spent</span>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-ivory ring-1 ring-marigold/30" />Not allocated</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-5 sm:grid-cols-4">
+        {[
+          { label: 'Allocated', value: rupees(allocated), sub: subItems.length ? `${subItems.length} item${subItems.length === 1 ? '' : 's'}` : 'nothing yet' },
+          { label: 'Spent', value: rupees(totalSpent), sub: dueTotal > 0 ? `${rupees(paidTotal)} paid · ${rupees(dueTotal)} due` : 'all paid' },
+          { label: 'Still to spend', value: rupees(stillToSpend), sub: 'of what is allocated' },
+          { label: 'Not allocated', value: rupees(notAllocated), sub: maxBudget > 0 ? 'free in the budget' : 'no limit set', warn: subItemsOverAllocated }
+        ].map(t => (
+          <div key={t.label} className={`rounded-xl border p-2.5 ${t.warn ? 'border-amber-500/40 bg-amber-500/10' : 'border-marigold/20 bg-ivory/60'}`}>
+            <p className="text-[10px] uppercase tracking-wide font-data text-maroon/50">{t.label}</p>
+            <p className="font-data text-base font-bold text-maroon">{t.value}</p>
+            <p className="text-[10px] font-data text-maroon/55">{t.sub}</p>
+          </div>
+        ))}
+      </div>
+
       {subItemsOverAllocated && (
         <p role="alert" className="mb-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 font-data text-xs text-amber-900">
           ⚠️ <span className="font-bold">Sub-budgets exceed the limit:</span> itemized sub-items total {rupees(subItemsPlannedTotal)}, which is {rupees(subItemsOverAllocatedAmount)} more than this function&apos;s budget ({rupees(maxBudget)}).
         </p>
       )}
+
+      {subItems.length > 0 && (
+        <div className="mb-5">
+          <h3 className="mb-2 font-data text-[10px] font-bold uppercase tracking-widest text-maroon/50">By item</h3>
+          <ul className="space-y-2.5">
+            {[...subItems]
+              .sort((a, b) => (Number(b.target_budget) || 0) - (Number(a.target_budget) || 0))
+              .map(item => {
+                const target = Number(item.target_budget) || 0
+                const spent = spentByItem.get(item.id) || 0
+                const over = target > 0 && spent > target
+                return (
+                  <li key={item.id} className="font-data text-xs">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 truncate font-semibold text-maroon">{item.name}{item.is_auto && <span className="ml-1 font-normal text-maroon/45">· auto</span>}</span>
+                      <span className={`shrink-0 ${over ? 'font-semibold text-rust-red' : 'text-maroon/70'}`}>
+                        {rupees(spent)} <span className="text-maroon/45">of {rupees(target)}</span>
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-marigold/15">
+                      <div className={`h-full rounded-full ${over ? 'bg-rust-red' : 'bg-mehendi'}`} style={{ width: `${target > 0 ? Math.min(100, (spent / target) * 100) : spent > 0 ? 100 : 0}%` }} />
+                    </div>
+                    <p className={`mt-0.5 text-[10px] ${over ? 'text-rust-red' : 'text-maroon/50'}`}>
+                      {over ? `Over by ${rupees(spent - target)}` : target > 0 ? `${rupees(target - spent)} still to spend` : 'No amount allocated'}
+                    </p>
+                  </li>
+                )
+              })}
+            {unlinkedSpent > 0 && (
+              <li className="flex justify-between gap-3 font-data text-xs text-maroon/60">
+                <span>Spending not tied to an item</span><span>{rupees(unlinkedSpent)}</span>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
       <dl className="space-y-2 text-xs font-data border-t border-marigold/10 pt-4">
         <div className="flex justify-between gap-4">
           <dt className="text-maroon/60">Where the limit comes from</dt>

@@ -233,6 +233,8 @@ export type GiftOverride = {
   family_id: string
   lifafa_amount: number
   note: string | null
+  /** Changed amounts by member id, 'family' or 'others' (needs 17_lifafa_per_person.sql) */
+  breakdown?: Record<string, number> | null
 }
 
 /**
@@ -303,6 +305,89 @@ export function giftUnitPrice(rule: GiftingRule, family: PlanningFamily, count?:
   return Number(byTier ?? rule.amount ?? 0)
 }
 
+function memberInGroup(group: GiftingRule['target_gender'], m: PlanningMember, kidAge: number) {
+  const age = classifyMember(m, kidAge)
+  switch (group) {
+    case 'All': return true
+    case 'Adults': return age !== 'kid'
+    case 'Kids': return age === 'kid'
+    case 'Seniors': return age === 'senior'
+    case 'Male': return m.gender === 'Male'
+    case 'Female': return m.gender === 'Female'
+    default: return false
+  }
+}
+
+/** One row of a family's lifafa, person by person: "Dadi ji · Senior · ₹1,100". */
+export type LifafaPart = { key: string; label: string; detail: string; usual: number; amount: number; changed: boolean }
+
+export const LIFAFA_FAMILY_KEY = 'family'
+export const LIFAFA_OTHERS_KEY = 'others'
+
+/**
+ * What the lifafa rules give a family, split per invited member, one lifafa "for the family"
+ * (per-family rules) and "others" (guests counted but not named). `changes` replaces any part.
+ */
+export function lifafaBreakdown(
+  rules: GiftingRule[],
+  family: PlanningFamily,
+  rows: PlanningAttendance[],
+  kidAge = DEFAULT_KID_AGE,
+  changes: Record<string, number> | null = null
+): { parts: LifafaPart[]; usualTotal: number; total: number } {
+  const hc = familyHeadcount(family, rows, kidAge)
+  if (hc.total === 0) return { parts: [], usualTotal: 0, total: 0 }
+  const lifafaRules = rules.filter(r => r.type === 'lifafa')
+  const members = invitedMembers(family, rows)
+  const AGE_LABEL = { kid: 'Kid', adult: 'Adult', senior: 'Senior' } as const
+
+  const memberParts = members.map(m => {
+    const usual = lifafaRules
+      .filter(r => r.distribution === 'per_person')
+      .filter(r => (hasChosenPeople(r) ? r.target_member_ids!.includes(m.id) : ruleAppliesToFamily(r, family) && memberInGroup(r.target_gender, m, kidAge)))
+      .reduce((s, r) => s + giftUnitPrice(r, family), 0)
+    return { key: m.id, label: m.name || 'Guest', detail: AGE_LABEL[classifyMember(m, kidAge)], usual }
+  })
+  const familyUsual = lifafaRules
+    .filter(r => r.distribution === 'per_family')
+    .filter(r => (hasChosenPeople(r) ? members.some(m => r.target_member_ids!.includes(m.id)) : ruleAppliesToFamily(r, family)))
+    .reduce((s, r) => s + giftUnitPrice(r, family), 0)
+  // Whatever the rules give beyond named people (expected guests without names)
+  const usualTotal = giftLines(lifafaRules, [], [family], rows, kidAge).reduce((s, l) => s + l.total, 0)
+  const othersUsual = Math.max(0, usualTotal - familyUsual - memberParts.reduce((s, p) => s + p.usual, 0))
+  const unnamed = Math.max(0, hc.total - members.length)
+
+  const base = [
+    ...memberParts,
+    { key: LIFAFA_FAMILY_KEY, label: 'For the family', detail: 'One lifafa', usual: familyUsual },
+    ...(othersUsual > 0 || unnamed > 0 ? [{ key: LIFAFA_OTHERS_KEY, label: 'Others not named', detail: `${unnamed} guest${unnamed === 1 ? '' : 's'}`, usual: othersUsual }] : [])
+  ]
+  const parts: LifafaPart[] = base.map(p => {
+    const c = changes?.[p.key]
+    const changed = c !== undefined && c !== null
+    return { ...p, amount: changed ? Number(c) : p.usual, changed }
+  })
+  return { parts, usualTotal, total: parts.reduce((s, p) => s + p.amount, 0) }
+}
+
+/**
+ * A family exception's total. Person-by-person exceptions are worked out afresh (usual amounts
+ * from today's rules plus the changed ones), so a later rule change still reaches everyone not
+ * changed; older exceptions saved as one fixed amount use that amount.
+ */
+export function exceptionAmount(
+  override: GiftOverride,
+  rules: GiftingRule[],
+  family: PlanningFamily,
+  rows: PlanningAttendance[],
+  kidAge = DEFAULT_KID_AGE
+) {
+  if (override.breakdown && Object.keys(override.breakdown).length > 0) {
+    return lifafaBreakdown(rules, family, rows, kidAge, override.breakdown).total
+  }
+  return Number(override.lifafa_amount) || 0
+}
+
 /** One thing a family is due at a function: "Milni lifafa · 3 × ₹1,100". */
 export type GiftLine = {
   /** Rule id, or LIFAFA_EXCEPTION_KEY for a family's fixed lifafa */
@@ -341,10 +426,17 @@ export function giftLines(
     if (hc.total === 0) return
     const override = overrideByFamily.get(family.id)
     if (override) {
+      // Replaces this family's lifafa rules (they are skipped below), so nothing is counted twice
+      const amount = exceptionAmount(override, rules, family, rows, kidAge)
+      const people = override.breakdown
+        ? lifafaBreakdown(rules, family, rows, kidAge, override.breakdown).parts
+            .filter(p => p.amount > 0)
+            .map(p => `${p.label} ₹${Math.round(p.amount).toLocaleString('en-IN')}`)
+        : []
       lines.push({
         key: LIFAFA_EXCEPTION_KEY, familyId: family.id, ruleId: null, kind: 'lifafa',
         label: override.note ? `Lifafa · ${override.note}` : 'Lifafa (family amount)',
-        qty: 1, unit: Number(override.lifafa_amount) || 0, total: Number(override.lifafa_amount) || 0, custom: true, people: []
+        qty: 1, unit: amount, total: amount, custom: true, people
       })
     }
     rules.forEach(rule => {
