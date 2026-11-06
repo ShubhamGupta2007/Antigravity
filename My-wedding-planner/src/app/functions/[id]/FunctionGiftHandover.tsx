@@ -317,14 +317,14 @@ export default function FunctionGiftHandover({
                               <div className="mt-2.5 flex flex-wrap items-end gap-2 border-t border-marigold/15 pt-2.5">
                                 <label className="w-20 space-y-1">
                                   <span className="block font-data text-[10px] font-bold uppercase text-maroon/50">How many</span>
-                                  <Input type="number" min={0} value={editing.qty} placeholder="usual" onChange={e => setEditing({ ...editing, qty: e.target.value })} className="h-8 border-marigold/40 text-xs" />
+                                  <Input type="number" min={0} value={editing.qty} placeholder="planned" onChange={e => setEditing({ ...editing, qty: e.target.value })} className="h-8 border-marigold/40 text-xs" />
                                 </label>
                                 <label className="w-28 space-y-1">
                                   <span className="block font-data text-[10px] font-bold uppercase text-maroon/50">Price of one ₹</span>
-                                  <Input type="number" min={0} value={editing.price} placeholder="usual" onChange={e => setEditing({ ...editing, price: e.target.value })} className="h-8 border-marigold/40 text-xs" />
+                                  <Input type="number" min={0} value={editing.price} placeholder="planned" onChange={e => setEditing({ ...editing, price: e.target.value })} className="h-8 border-marigold/40 text-xs" />
                                 </label>
                                 <button type="button" disabled={busy} onClick={saveEdit} className="h-8 rounded-full bg-maroon px-4 font-data text-xs font-semibold text-ivory disabled:opacity-60">Save</button>
-                                <button type="button" onClick={() => setEditing({ ...editing, qty: '', price: '' })} className="h-8 px-2 font-data text-[11px] font-semibold text-maroon/60 underline">Back to usual</button>
+                                <button type="button" onClick={() => setEditing({ ...editing, qty: '', price: '' })} className="h-8 px-2 font-data text-[11px] font-semibold text-maroon/60 underline">Back to planned</button>
                               </div>
                             )}
                           </div>

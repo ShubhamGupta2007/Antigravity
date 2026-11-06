@@ -467,7 +467,7 @@ export default function FunctionGiftingRules({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-maroon">{familyLabel(familyName)}</p>
                     <p className="text-[10px] text-maroon/60 font-data">
-                      Rules would give {rupees(replacedAmount)} → now {rupees(amount)}
+                      Planned {rupees(replacedAmount)} → now {rupees(amount)}
                       {amount !== replacedAmount && (
                         <span className={`ml-1 font-semibold ${amount < replacedAmount ? 'text-mehendi' : 'text-rust-red'}`}>
                           ({amount < replacedAmount ? '−' : '+'}{rupees(Math.abs(amount - replacedAmount))})
@@ -714,7 +714,7 @@ export default function FunctionGiftingRules({
               <button onClick={() => setOverrideModal({ open: false, editing: null })} className="text-maroon/50 hover:text-maroon" aria-label="Close">✕</button>
             </div>
             <form onSubmit={handleSaveOverride} className="p-5 space-y-4">
-              <p className="text-xs font-data text-maroon/60">Change what this family gets: lifafa person by person, and how many bhaji boxes or gifts at what price. Leave a box empty to keep the usual.</p>
+              <p className="text-xs font-data text-maroon/60">Change what this family gets: lifafa person by person, and how many bhaji boxes or gifts at what price. Leave a box empty to keep what&apos;s planned.</p>
               {submitError && (
                 <div className="p-3 bg-rust-red/10 border border-rust-red/30 text-rust-red text-xs rounded-lg font-data font-semibold">{submitError}</div>
               )}
@@ -734,7 +734,7 @@ export default function FunctionGiftingRules({
                   {ovBreakdown && (
                     <div className="rounded-xl border border-marigold/25 bg-white">
                       <div className="grid grid-cols-[1fr_auto_6.5rem] items-center gap-x-3 border-b border-marigold/15 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-maroon/50">
-                        <span>💵 Lifafa · who</span><span className="text-right">Usual</span><span>Give</span>
+                        <span>💵 Lifafa · who</span><span className="text-right">Planned</span><span>Give</span>
                       </div>
                       <ul className="divide-y divide-marigold/10">
                         {ovBreakdown.parts.map(p => (
@@ -758,7 +758,7 @@ export default function FunctionGiftingRules({
                         ))}
                       </ul>
                       <div className="flex items-center justify-between gap-3 border-t border-marigold/20 bg-marigold/10 px-3 py-2.5 rounded-b-xl">
-                        <span className="text-xs font-data text-maroon/70">Usually {rupees(ovBreakdown.usualTotal)}</span>
+                        <span className="text-xs font-data text-maroon/70">Planned {rupees(ovBreakdown.usualTotal)}</span>
                         <span className="font-display text-lg font-bold text-maroon">Total {rupees(ovBreakdown.total)}</span>
                       </div>
                     </div>
@@ -775,7 +775,7 @@ export default function FunctionGiftingRules({
                             <span className="min-w-0">
                               <span className="block truncate text-sm font-semibold text-maroon">{(GIFT_KINDS[row.rule.type] || GIFT_KINDS.gift).icon} {row.rule.rule_name}</span>
                               <span className="block text-[10px] text-maroon/50 font-data">
-                                Usually {row.usualQty ? `${row.usualQty} × ${rupees(row.usualUnit)}` : 'not given'}
+                                Planned {row.usualQty ? `${row.usualQty} × ${rupees(row.usualUnit)}` : 'none'}
                                 {row.changed && <span className="font-semibold text-maroon"> → {row.qty} × {rupees(row.unit)}</span>}
                               </span>
                             </span>
@@ -789,7 +789,7 @@ export default function FunctionGiftingRules({
                         ))}
                       </ul>
                       <div className="flex items-center justify-between gap-3 border-t border-marigold/20 bg-marigold/10 px-3 py-2.5 rounded-b-xl">
-                        <span className="text-xs font-data text-maroon/70">Usually {rupees(ovItemsUsual)}</span>
+                        <span className="text-xs font-data text-maroon/70">Planned {rupees(ovItemsUsual)}</span>
                         <span className="font-display text-lg font-bold text-maroon">Total {rupees(ovItemsTotal)}</span>
                       </div>
                     </div>
