@@ -66,6 +66,16 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
   )
   const budgetFromCategory = categoryLimit > 0
   const maxBudget = budgetFromCategory ? categoryLimit : Number(func.max_budget) || 0
+
+  // Fetch linked category sub-items to detect if itemized allocations exceed category/function budget
+  const linkedCategoryIds = (budgetCats || []).map(c => c.id)
+  const { data: linkedSubItems } = linkedCategoryIds.length > 0
+    ? await supabase.from('category_sub_items').select('id, name, target_budget, is_auto').in('category_id', linkedCategoryIds)
+    : { data: [] }
+
+  const subItemsPlannedTotal = (linkedSubItems || []).reduce((acc, curr) => acc + (Number(curr.target_budget) || 0), 0)
+  const subItemsOverAllocated = (linkedSubItems || []).length > 0 && maxBudget > 0 && subItemsPlannedTotal > maxBudget
+  const subItemsOverAllocatedAmount = subItemsOverAllocated ? subItemsPlannedTotal - maxBudget : 0
   const budgetPercentage = maxBudget > 0 ? (totalSpent / maxBudget) * 100 : 0
   const overbudget = totalSpent > maxBudget
 
@@ -634,6 +644,18 @@ export default async function FunctionDetailPage({ params }: { params: Promise<{
                 <div className="flex justify-between text-xs font-data text-maroon/50 mb-2">
                   <span>Planned ritual items</span>
                   <span>₹{Math.round(Number(func.planned_ritual_total)).toLocaleString('en-IN')}</span>
+                </div>
+              )}
+
+              {subItemsOverAllocated && (
+                <div className="mb-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-data flex items-start gap-2">
+                  <span className="text-sm">⚠️</span>
+                  <div>
+                    <span className="font-bold">Sub-budgets exceed category limit: </span>
+                    <span>
+                      Itemized sub-items total ₹{subItemsPlannedTotal.toLocaleString('en-IN')}, which exceeds this function&apos;s budget (₹{maxBudget.toLocaleString('en-IN')}) by ₹{subItemsOverAllocatedAmount.toLocaleString('en-IN')}.
+                    </span>
+                  </div>
                 </div>
               )}
               

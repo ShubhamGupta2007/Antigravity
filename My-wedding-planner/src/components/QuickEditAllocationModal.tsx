@@ -62,6 +62,11 @@ export function QuickEditAllocationModal({
     setIsOpen(false)
   }
 
+  // Calculate sum of sub-items and check if it exceeds limit
+  const subItemsTotal = [...autoItems, ...items].reduce((acc, curr) => acc + (Number(curr.target_budget) || 0), 0)
+  const isSubOver = Number(limit) > 0 && subItemsTotal > Number(limit)
+  const subOverAmount = isSubOver ? subItemsTotal - Number(limit) : 0
+
   const handleAddSubItem = () => {
     setItems([
       ...items,
@@ -240,9 +245,14 @@ export function QuickEditAllocationModal({
               {/* Itemized Sub-Budgets */}
               <div className="space-y-2 pt-2 border-t border-marigold/15">
                 <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-maroon">
-                    📊 Itemized Sub-Budgets (Optional)
-                  </Label>
+                  <div>
+                    <Label className="text-xs font-bold text-maroon block">
+                      📊 Itemized Sub-Budgets (Optional)
+                    </Label>
+                    <span className="text-[10px] text-maroon/50 font-data">
+                      Total: {formatLakhs(subItemsTotal)} of {formatLakhs(Number(limit) || 0)}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddSubItem}
@@ -251,6 +261,18 @@ export function QuickEditAllocationModal({
                     + Add Item
                   </button>
                 </div>
+
+                {isSubOver && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-data flex items-start gap-2">
+                    <span className="text-sm">⚠️</span>
+                    <div>
+                      <span className="font-bold">Sub-budgets exceed category limit: </span>
+                      <span>
+                        Total of sub-items ({formatLakhs(subItemsTotal)}) is {formatLakhs(subOverAmount)} higher than the category limit ({formatLakhs(Number(limit) || 0)}).
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {autoItems.map(sub => (
                   <div key={sub.id} className="flex items-center justify-between gap-2 bg-mehendi/5 p-2.5 rounded-xl border border-mehendi/20 text-xs" title="Calculated from this function's gifting rules. Change it from the function's page.">

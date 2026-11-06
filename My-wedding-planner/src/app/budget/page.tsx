@@ -242,6 +242,11 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
     
     const percentage = maxBudget > 0 ? (spent / maxBudget) * 100 : (spent > 0 ? 100 : 0)
     
+    // Sub-item allocations check against parent category limit
+    const subItemsPlannedTotal = catSubItems.reduce((acc, curr) => acc + (Number(curr.target_budget) || 0), 0)
+    const subItemsOverAllocated = catSubItems.length > 0 && maxBudget > 0 && subItemsPlannedTotal > maxBudget
+    const subItemsOverAllocatedAmount = subItemsOverAllocated ? subItemsPlannedTotal - maxBudget : 0
+
     return {
       ...cat,
       maxBudget,
@@ -250,7 +255,10 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
       percentage: Math.min(percentage, 100),
       overbudget: spent > maxBudget && maxBudget > 0,
       nearlimit: spent >= maxBudget * 0.9 && spent < maxBudget && maxBudget > 0,
-      subItemsList: catSubItems
+      subItemsList: catSubItems,
+      subItemsPlannedTotal,
+      subItemsOverAllocated,
+      subItemsOverAllocatedAmount
     }
   })
 
@@ -452,6 +460,14 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center flex-wrap gap-1.5">
                                   <span className="font-display font-bold text-lg md:text-xl text-maroon block leading-tight truncate">{cat.name}</span>
+                                  {cat.subItemsOverAllocated && (
+                                    <span 
+                                      className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm"
+                                      title={`Itemized sub-budgets (${formatLakhs(cat.subItemsPlannedTotal)}) exceed category limit (${formatLakhs(cat.maxBudget)}) by ${formatLakhs(cat.subItemsOverAllocatedAmount)}`}
+                                    >
+                                      ⚠️ Sub-budgets Exceed Limit (+{formatLakhs(cat.subItemsOverAllocatedAmount)})
+                                    </span>
+                                  )}
                                   {cat.overbudget && (
                                     <span className="bg-rust-red/10 text-rust-red text-[10px] px-2 py-0.5 rounded-full font-bold border border-rust-red/20 shadow-sm">🚨 Over</span>
                                   )}
@@ -506,7 +522,23 @@ export default async function BudgetDashboard({ searchParams }: PageProps) {
 
                           {cat.subItemsList && cat.subItemsList.length > 0 && (
                             <div className="space-y-3 px-1">
-                              <h4 className="text-[10px] uppercase font-bold tracking-wider text-maroon/50 font-data">📊 Itemized Sub-Budgets</h4>
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-[10px] uppercase font-bold tracking-wider text-maroon/50 font-data">📊 Itemized Sub-Budgets</h4>
+                                <span className={`text-[10px] font-data font-semibold ${cat.subItemsOverAllocated ? 'text-rust-red font-bold' : 'text-maroon/60'}`}>
+                                  Total: {formatLakhs(cat.subItemsPlannedTotal)} of {formatLakhs(cat.maxBudget)}
+                                </span>
+                              </div>
+                              {cat.subItemsOverAllocated && (
+                                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-data flex items-start gap-2">
+                                  <span className="text-sm">⚠️</span>
+                                  <div>
+                                    <span className="font-bold">Itemized sub-budgets exceed category limit: </span>
+                                    <span>
+                                      Sum of sub-items ({formatLakhs(cat.subItemsPlannedTotal)}) is {formatLakhs(cat.subItemsOverAllocatedAmount)} more than this category&apos;s allocated limit of {formatLakhs(cat.maxBudget)}.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
                               <div className="space-y-3">
                                 {cat.subItemsList.map((item: any) => {
                                   const alertColor = item.overbudget 
