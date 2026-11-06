@@ -2,13 +2,16 @@ import { createClient } from '@/lib/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, Calendar } from 'lucide-react'
+import { ArrowLeft, Plus, Calendar, ChevronRight } from 'lucide-react'
+import { differenceInCalendarDays, format } from 'date-fns'
 import FunctionsView, { type FunctionCard } from './FunctionsView'
 import {
   DEFAULT_KID_AGE,
   PLANNING_FAMILY_SELECT,
   familiesFromAttendance,
+  formatTime,
   functionHeadcount,
+  parseEventDate,
   type FunctionSegment,
   type PlanningAttendance,
   type PlanningFamily
@@ -76,7 +79,8 @@ export default async function FunctionsPage() {
         confirmed: hc.confirmedTotal,
         plannedGifting: Math.round((Number(f.planned_lifafa_total) || 0) + (Number(f.planned_return_gift_total) || 0)),
         shagunReceived: Math.round(shagunByFunction.get(f.id)?.cash || 0),
-        segments: (f.function_segments || []) as FunctionSegment[]
+        segments: (f.function_segments || []) as FunctionSegment[],
+        daysToGo: differenceInCalendarDays(parseEventDate(f.event_date), new Date())
       }
     })
 
@@ -91,76 +95,90 @@ export default async function FunctionsPage() {
 
   const canAdd = role === 'admin' || role === 'planner' || role === 'bride' || role === 'groom' || side
 
+  // Next function still to come (today counts), for the spotlight
+  const upcoming = visibleFunctions.filter(f => f.daysToGo >= 0)
+  const nextUp = upcoming[0] || null
+  const dayCount = new Set(visibleFunctions.map(f => f.event_date.slice(0, 10))).size
+  const countdownText = (d: number) => (d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : `In ${d} days`)
+
   return (
-    <main className="min-h-screen flex flex-col p-6 max-w-5xl mx-auto bg-ivory pb-24">
-      <header className="flex items-center justify-between py-4 border-b border-marigold/30 mb-6">
-        <div className="flex items-center space-x-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon" className="text-maroon/70 hover:text-maroon hover:bg-marigold/10">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-display font-semibold text-maroon">Functions</h1>
-        </div>
-        <Link href="/functions/checklist">
-          <Button variant="outline" size="sm" className="border-marigold/50 text-maroon hover:bg-marigold/10 h-8 text-xs rounded-full">
-            ✅ Ritual Checklist
-          </Button>
-        </Link>
-      </header>
+    <main className="min-h-screen bg-ivory pb-28">
+      <header className="bg-gradient-to-br from-[#3A0B20] to-maroon text-white">
+        <div className="mx-auto max-w-5xl px-4 pt-4 pb-6 sm:px-6">
+          <div className="flex items-center justify-between gap-3">
+            <Link href="/" aria-label="Back to home" className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <Link href="/functions/checklist" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold hover:bg-white/20">
+              ✅ Ritual checklist
+            </Link>
+          </div>
+          <h1 className="mt-4 font-display text-4xl font-bold text-[#F2C46D] sm:text-5xl">Functions</h1>
+          <p className="mt-1 font-data text-[13px] text-white/80">
+            {visibleFunctions.length === 0
+              ? 'Every ceremony of the wedding, in one place'
+              : `${visibleFunctions.length} function${visibleFunctions.length === 1 ? '' : 's'} over ${dayCount} day${dayCount === 1 ? '' : 's'}${upcoming.length < visibleFunctions.length ? ` · ${visibleFunctions.length - upcoming.length} done` : ''}`}
+          </p>
 
-      {functionsError && (
-        <div className="bg-rust-red/10 border border-rust-red p-4 rounded-xl mb-6 text-xs text-rust-red font-data">
-          Couldn&apos;t load functions. If you just updated the app, run <b>supabase/07_function_planning.sql</b> in the Supabase SQL editor.
-        </div>
-      )}
-
-      {visibleFunctions.length === 0 ? (
-        <div className="text-center p-8 bg-white rounded-2xl border border-marigold/30 mt-4">
-          <Calendar className="w-12 h-12 text-marigold/40 mx-auto mb-4" />
-          <p className="text-maroon/70 font-data text-sm mb-4">No functions have been added yet.</p>
-          {canAdd && (
-            <Link href="/functions/add">
-              <Button className="bg-maroon text-ivory">Add First Function</Button>
+          {nextUp && (
+            <Link href={`/functions/${nextUp.id}`} className="group mt-5 flex items-center gap-4 rounded-2xl border border-[#F2C46D]/35 bg-white/[0.07] p-4 transition hover:bg-white/[0.12]">
+              <div className="shrink-0 rounded-xl bg-[#F2C46D] px-3 py-2 text-center text-[#3A0B20]">
+                <p className="font-data text-[10px] font-bold uppercase">{format(parseEventDate(nextUp.event_date), 'MMM')}</p>
+                <p className="font-display text-3xl font-bold leading-none">{format(parseEventDate(nextUp.event_date), 'd')}</p>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-data text-[10px] font-bold uppercase tracking-widest text-[#F2C46D]">Next up · {countdownText(nextUp.daysToGo)}</p>
+                <p className="truncate font-display text-2xl font-semibold">{nextUp.name}</p>
+                <p className="truncate font-data text-xs text-white/75">
+                  {format(parseEventDate(nextUp.event_date), 'EEEE')}
+                  {nextUp.start_time ? ` · ${formatTime(nextUp.start_time)}` : ''}
+                  {nextUp.location ? ` · ${nextUp.location}` : ''}
+                  {nextUp.total ? ` · ${nextUp.total} guests` : ''}
+                </p>
+              </div>
+              <ChevronRight className="h-5 w-5 shrink-0 text-white/50 transition group-hover:translate-x-0.5" />
             </Link>
           )}
-        </div>
-      ) : (
-        <>
-          {shagunFunctions.length > 0 && (
-            <section className="mb-6 bg-gradient-to-r from-mehendi/10 to-marigold/10 border border-mehendi/20 rounded-2xl p-4" aria-label="Shagun received">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider font-bold text-maroon/60">🪙 Shagun received, all functions</p>
-                  <p className="text-2xl font-display font-bold text-maroon">₹{Math.round(shagunTotals.cash).toLocaleString('en-IN')}</p>
-                  <p className="text-xs font-data text-maroon/60">
-                    {shagunTotals.entries} {shagunTotals.entries === 1 ? 'entry' : 'entries'}{shagunTotals.gifts > 0 ? ` • ${shagunTotals.gifts} gifts` : ''}
-                  </p>
-                </div>
-                <ul className="flex flex-wrap gap-2">
-                  {shagunFunctions.map(f => (
-                    <li key={f.id}>
-                      <Link href={`/functions/${f.id}`} className="block text-xs font-data bg-white/80 border border-marigold/20 hover:border-marigold rounded-xl px-3 py-1.5">
-                        <span className="text-maroon/70">{f.name}</span>{' '}
-                        <b className="text-maroon">₹{Math.round(shagunByFunction.get(f.id)!.cash).toLocaleString('en-IN')}</b>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          )}
-          <FunctionsView functions={visibleFunctions} />
-        </>
-      )}
 
-      {/* Floating Action Button */}
-      {canAdd && (
-        <Link href="/functions/add">
-          <div className="fixed bottom-20 md:bottom-8 right-6 z-40 bg-maroon text-ivory px-6 py-4 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] hover:scale-105 hover:bg-maroon/90 transition-all flex items-center justify-center cursor-pointer group border border-marigold/20">
-            <Plus className="w-5 h-5 mr-2" />
-            <span className="font-bold text-sm">Add Function</span>
+          {shagunFunctions.length > 0 && (
+            <p className="mt-3 inline-block rounded-full bg-white/10 px-3 py-1 font-data text-[11px]">
+              🪙 ₹{Math.round(shagunTotals.cash).toLocaleString('en-IN')} shagun received · {shagunTotals.entries} {shagunTotals.entries === 1 ? 'entry' : 'entries'}
+              {shagunTotals.gifts > 0 ? ` · ${shagunTotals.gifts} gifts` : ''}
+            </p>
+          )}
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-5xl px-4 pt-6 sm:px-6">
+        {functionsError && (
+          <div role="alert" className="mb-6 rounded-xl border border-rust-red/30 bg-rust-red/10 p-3 font-data text-xs text-rust-red">
+            Couldn&apos;t load functions. If you just updated the app, run <b>supabase/07_function_planning.sql</b> in the Supabase SQL editor.
           </div>
+        )}
+
+        {visibleFunctions.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-marigold/30 bg-white p-10 text-center">
+            <Calendar className="mx-auto mb-4 h-12 w-12 text-marigold/50" />
+            <p className="font-display text-xl font-semibold text-maroon">No functions yet</p>
+            <p className="mb-5 mt-1 font-data text-sm text-maroon/60">Add Haldi, Mehendi, Sangeet, the Wedding… and plan each one here.</p>
+            {canAdd && (
+              <Link href="/functions/add">
+                <Button className="rounded-full bg-maroon text-ivory">Add first function</Button>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <FunctionsView functions={visibleFunctions} />
+        )}
+      </div>
+
+      {canAdd && (
+        <Link
+          href="/functions/add"
+          className="fixed bottom-20 right-5 z-40 flex items-center rounded-full border border-[#F2C46D]/40 bg-maroon px-5 py-3.5 text-ivory shadow-[0_8px_30px_rgba(58,11,32,0.35)] transition hover:scale-105 md:bottom-8"
+        >
+          <Plus className="mr-2 h-5 w-5" />
+          <span className="text-sm font-bold">Add function</span>
         </Link>
       )}
     </main>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Calendar, MapPin, Users, LayoutGrid, ListOrdered, AlertTriangle, Gift } from 'lucide-react'
+import { MapPin, Users, LayoutGrid, ListOrdered, AlertTriangle, ChevronRight } from 'lucide-react'
 import { formatTime, parseEventDate, sortSegments, timeToMinutes, type FunctionSegment } from '@/lib/functionPlanning'
 
 export type FunctionCard = {
@@ -23,20 +23,28 @@ export type FunctionCard = {
   /** Cash shagun received at this function (hosts only; 0 otherwise). */
   shagunReceived: number
   segments: FunctionSegment[]
+  /** Calendar days from today (worked out on the server); negative once it has passed. */
+  daysToGo: number
 }
 
 type View = 'timeline' | 'cards'
 const VIEW_KEY = 'functions-view'
 
-const sideBadge = (side: FunctionCard['hosting_side']) =>
-  side === 'groom'
-    ? { cls: 'bg-marigold/20 text-maroon', label: '🤵‍♂️ Groom' }
-    : side === 'bride'
-      ? { cls: 'bg-rani-pink/10 text-rani-pink', label: '👰‍♀️ Bride' }
-      : { cls: 'bg-mehendi/10 text-mehendi', label: '🤝 Joint' }
+// One colour per hosting side, used for the accent strip and the badge
+const SIDE = {
+  groom: { label: '🤵‍♂️ Ladkewale', badge: 'bg-marigold/20 text-maroon', strip: 'bg-marigold' },
+  bride: { label: '👰‍♀️ Ladkiwale', badge: 'bg-rani-pink/10 text-rani-pink', strip: 'bg-rani-pink' },
+  joint: { label: '🤝 Joint', badge: 'bg-mehendi/10 text-mehendi', strip: 'bg-mehendi' }
+} as const
 
 const timeRange = (start: string | null, end: string | null) =>
-  start ? `${formatTime(start)}${end ? ` – ${formatTime(end)}` : ''}` : 'Time TBD'
+  start ? `${formatTime(start)}${end ? ` – ${formatTime(end)}` : ''}` : 'Time to be set'
+
+const countdown = (d: number) =>
+  d < 0 ? { text: 'Done', cls: 'bg-maroon/5 text-maroon/50' }
+    : d === 0 ? { text: 'Today', cls: 'bg-maroon text-ivory' }
+      : d === 1 ? { text: 'Tomorrow', cls: 'bg-marigold text-[#3A0B20]' }
+        : { text: `In ${d} days`, cls: 'bg-marigold/15 text-maroon' }
 
 /** Minutes range for overlap checks; a missing end time is treated as 1 hour. */
 function interval(f: FunctionCard) {
@@ -72,21 +80,24 @@ export default function FunctionsView({ functions }: { functions: FunctionCard[]
 
   return (
     <div className="space-y-6">
-      <div className="inline-flex bg-marigold/10 p-0.5 rounded-lg text-xs font-data" role="tablist" aria-label="Functions view">
-        {([
-          { id: 'timeline', label: 'Timeline', icon: ListOrdered },
-          { id: 'cards', label: 'Cards', icon: LayoutGrid }
-        ] as const).map(tab => (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={view === tab.id}
-            onClick={() => changeView(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md transition-all ${view === tab.id ? 'bg-maroon text-ivory shadow-xs font-semibold' : 'text-maroon/70 hover:text-maroon'}`}
-          >
-            <tab.icon className="w-3.5 h-3.5" /> {tab.label}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-data text-[10px] font-bold uppercase tracking-widest text-maroon/50">All functions</h2>
+        <div className="inline-flex rounded-full border border-marigold/30 bg-white p-0.5 font-data text-xs" role="tablist" aria-label="Functions view">
+          {([
+            { id: 'timeline', label: 'By day', icon: ListOrdered },
+            { id: 'cards', label: 'Cards', icon: LayoutGrid }
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={view === tab.id}
+              onClick={() => changeView(tab.id)}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 transition-all ${view === tab.id ? 'bg-maroon font-semibold text-ivory' : 'text-maroon/70 hover:text-maroon'}`}
+            >
+              <tab.icon className="h-3.5 w-3.5" /> {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {view === 'cards' ? <CardsView functions={functions} /> : <TimelineView functions={functions} />}
@@ -94,35 +105,53 @@ export default function FunctionsView({ functions }: { functions: FunctionCard[]
   )
 }
 
+/** Guests line: "84 guests · 30 confirmed" */
+function Guests({ f }: { f: FunctionCard }) {
+  if (f.total === 0) return <span className="text-maroon/40">No guests yet</span>
+  return (
+    <span>
+      {f.total} guests
+      {f.confirmed > 0 && <span className="text-mehendi"> · {f.confirmed} confirmed</span>}
+    </span>
+  )
+}
+
 function CardsView({ functions }: { functions: FunctionCard[] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {functions.map(f => {
-        const badge = sideBadge(f.hosting_side)
+        const side = SIDE[f.hosting_side] || SIDE.joint
+        const cd = countdown(f.daysToGo)
+        const date = parseEventDate(f.event_date)
         return (
-          <Link key={f.id} href={`/functions/${f.id}`} className="group">
-            <div className="bg-white rounded-2xl shadow-sm border border-marigold/20 p-5 hover:border-marigold transition-colors h-full flex flex-col">
-              <div className="flex justify-between items-start gap-2 mb-4">
-                <h3 className="text-xl font-display font-semibold text-maroon group-hover:text-marigold transition-colors">{f.name}</h3>
-                <span className={`text-xs px-2 py-1 rounded-full font-data whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
+          <Link
+            key={f.id}
+            href={`/functions/${f.id}`}
+            className={`group relative flex flex-col overflow-hidden rounded-2xl border border-marigold/25 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-marigold hover:shadow-md ${f.daysToGo < 0 ? 'opacity-60' : ''}`}
+          >
+            <span className={`h-1.5 ${side.strip}`} aria-hidden="true" />
+            <div className="flex flex-1 flex-col p-4">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 rounded-xl border border-marigold/30 bg-ivory px-2.5 py-1.5 text-center">
+                  <p className="font-data text-[9px] font-bold uppercase text-maroon/60">{format(date, 'MMM')}</p>
+                  <p className="font-display text-2xl font-bold leading-none text-maroon">{format(date, 'd')}</p>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate font-display text-xl font-semibold text-maroon">{f.name}</h3>
+                  <p className="font-data text-xs text-maroon/60">{format(date, 'EEEE')} · {timeRange(f.start_time, f.end_time)}</p>
+                </div>
               </div>
-              <div className="space-y-2 mt-auto">
-                <div className="flex items-center text-sm font-data text-maroon/70">
-                  <Calendar className="w-4 h-4 mr-2 text-marigold" />
-                  <span>{format(parseEventDate(f.event_date), 'MMM do, yyyy')}</span>
-                  {f.start_time && <span className="ml-2 border-l border-maroon/20 pl-2">{formatTime(f.start_time)}</span>}
-                </div>
+
+              <div className="mt-3 space-y-1 font-data text-xs text-maroon/70">
                 {f.location && (
-                  <div className="flex items-center text-sm font-data text-maroon/70">
-                    <MapPin className="w-4 h-4 mr-2 text-marigold" />
-                    <span className="truncate">{f.location}</span>
-                  </div>
+                  <p className="flex items-center truncate"><MapPin className="mr-1.5 h-3.5 w-3.5 shrink-0 text-marigold" />{f.location}</p>
                 )}
-                <div className="flex items-center text-sm font-data text-maroon/70 pt-2 border-t border-marigold/10 mt-3">
-                  <Users className="w-4 h-4 mr-2 text-marigold" />
-                  <span>{f.total} expected</span>
-                  {f.total > 0 && <span className="ml-1 text-maroon/50 text-xs">({f.adults} adults{f.kids ? `, ${f.kids} kids` : ''})</span>}
-                </div>
+                <p className="flex items-center"><Users className="mr-1.5 h-3.5 w-3.5 shrink-0 text-marigold" /><Guests f={f} /></p>
+              </div>
+
+              <div className="mt-auto flex items-center justify-between gap-2 pt-4">
+                <span className={`rounded-full px-2 py-0.5 font-data text-[10px] font-semibold ${side.badge}`}>{side.label}</span>
+                <span className={`rounded-full px-2 py-0.5 font-data text-[10px] font-bold ${cd.cls}`}>{cd.text}</span>
               </div>
             </div>
           </Link>
@@ -140,15 +169,15 @@ function TimelineView({ functions }: { functions: FunctionCard[] }) {
     days.set(key, [...(days.get(key) || []), f])
   })
   const dayKeys = Array.from(days.keys()).sort()
-  const firstDay = dayKeys.length ? parseEventDate(dayKeys[0]) : null
 
   return (
     <div className="space-y-8">
       {dayKeys.map((key, dayIdx) => {
         const date = parseEventDate(key)
         const dayFns = sortSegments(days.get(key) || [])
-        const dayNumber = firstDay ? Math.round((date.getTime() - firstDay.getTime()) / 86400000) + 1 : dayIdx + 1
-        const dayGuests = dayFns.reduce((s, f) => s + f.total, 0)
+        const dayNumber = dayIdx + 1
+        const past = dayFns.every(f => f.daysToGo < 0)
+        const cd = countdown(dayFns[0].daysToGo)
 
         // Overlapping functions on the same day
         const clashes = new Map<string, string[]>()
@@ -166,68 +195,77 @@ function TimelineView({ functions }: { functions: FunctionCard[] }) {
         })
 
         return (
-          <section key={key} aria-label={format(date, 'EEEE d MMMM yyyy')}>
-            <header className="sticky top-0 z-10 bg-ivory/95 backdrop-blur-sm py-2 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-marigold/30">
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-display font-bold text-maroon leading-none">{format(date, 'd')}</span>
-                <span className="text-sm font-display font-semibold text-maroon">{format(date, 'MMMM yyyy')}</span>
-                <span className="text-sm font-data text-maroon/60">{format(date, 'EEEE')}</span>
+          <section key={key} aria-label={format(date, 'EEEE d MMMM yyyy')} className={`flex gap-3 sm:gap-5 ${past ? 'opacity-60' : ''}`}>
+            {/* Date tile, sticks while scrolling the day */}
+            <div className="w-14 shrink-0 sm:w-16">
+              <div className="sticky top-3 rounded-2xl bg-maroon px-1 py-2 text-center text-ivory shadow-sm">
+                <p className="font-data text-[9px] font-bold uppercase tracking-wider text-[#F2C46D]">Day {dayNumber}</p>
+                <p className="font-display text-3xl font-bold leading-none">{format(date, 'd')}</p>
+                <p className="font-data text-[10px] uppercase">{format(date, 'MMM')}</p>
+                <p className="font-data text-[10px] text-ivory/70">{format(date, 'EEE')}</p>
               </div>
-              <span className="text-[10px] uppercase tracking-wider font-bold text-marigold bg-marigold/10 px-2 py-0.5 rounded-full">Day {dayNumber}</span>
-              <span className="ml-auto text-xs font-data text-maroon/60">
-                {dayFns.length} {dayFns.length === 1 ? 'function' : 'functions'}{dayGuests > 0 ? ` • ${dayGuests} guests` : ''}
-              </span>
-            </header>
+            </div>
 
-            <ol className="relative border-l-2 border-marigold/30 ml-3 space-y-5">
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex items-center gap-2 pt-1">
+                <span className={`rounded-full px-2 py-0.5 font-data text-[10px] font-bold ${cd.cls}`}>{cd.text}</span>
+                <span className="font-data text-xs text-maroon/50">
+                  {format(date, 'EEEE, d MMMM')} · {dayFns.length} {dayFns.length === 1 ? 'function' : 'functions'}
+                </span>
+              </div>
+
               {dayFns.map(f => {
-                const badge = sideBadge(f.hosting_side)
+                const side = SIDE[f.hosting_side] || SIDE.joint
                 const clashWith = clashes.get(f.id)
                 const parts = sortSegments(f.segments)
                 return (
-                  <li key={f.id} className="ml-5">
-                    <span className="absolute -left-[9px] mt-4 w-4 h-4 rounded-full bg-maroon border-[3px] border-ivory shadow" aria-hidden />
-                    <Link href={`/functions/${f.id}`} className="group block bg-white rounded-2xl border border-marigold/20 hover:border-marigold shadow-sm transition-colors p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-data font-bold text-maroon/70">{timeRange(f.start_time, f.end_time)}</p>
-                          <h3 className="text-lg font-display font-semibold text-maroon group-hover:text-marigold transition-colors">{f.name}</h3>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded-full font-data whitespace-nowrap ${badge.cls}`}>{badge.label}</span>
+                  <Link
+                    key={f.id}
+                    href={`/functions/${f.id}`}
+                    className="group relative block overflow-hidden rounded-2xl border border-marigold/25 bg-white p-4 pl-5 shadow-sm transition hover:border-marigold hover:shadow-md"
+                  >
+                    <span className={`absolute inset-y-0 left-0 w-1.5 ${side.strip}`} aria-hidden="true" />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-data text-xs font-bold text-maroon/60 tabular-nums">{timeRange(f.start_time, f.end_time)}</p>
+                        <h3 className="truncate font-display text-2xl font-semibold leading-tight text-maroon">{f.name}</h3>
                       </div>
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-data text-maroon/70">
-                        {f.location && <span className="flex items-center"><MapPin className="w-3.5 h-3.5 mr-1 text-marigold" />{f.location}</span>}
-                        <span className="flex items-center"><Users className="w-3.5 h-3.5 mr-1 text-marigold" />{f.total} expected{f.total > 0 ? ` (${f.adults} adults${f.kids ? `, ${f.kids} kids` : ''})` : ''}</span>
-                        {f.confirmed > 0 && <span className="text-mehendi font-semibold">✅ {f.confirmed} confirmed</span>}
-                        {f.plannedGifting > 0 && <span className="flex items-center"><Gift className="w-3.5 h-3.5 mr-1 text-marigold" />₹{f.plannedGifting.toLocaleString('en-IN')} lifafas</span>}
-                        {f.shagunReceived > 0 && <span className="text-mehendi">🪙 ₹{f.shagunReceived.toLocaleString('en-IN')} received</span>}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className={`rounded-full px-2 py-0.5 font-data text-[10px] font-semibold ${side.badge}`}>{side.label}</span>
+                        <ChevronRight className="h-4 w-4 text-maroon/30 transition group-hover:translate-x-0.5" />
                       </div>
+                    </div>
 
-                      {clashWith && (
-                        <p className="mt-2 text-[11px] font-data text-rust-red flex items-center">
-                          <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Overlaps with {clashWith.join(', ')}
-                        </p>
-                      )}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-data text-xs text-maroon/70">
+                      {f.location && <span className="flex items-center"><MapPin className="mr-1 h-3.5 w-3.5 text-marigold" />{f.location}</span>}
+                      <span className="flex items-center"><Users className="mr-1 h-3.5 w-3.5 text-marigold" /><Guests f={f} /></span>
+                      {f.plannedGifting > 0 && <span>🎁 ₹{f.plannedGifting.toLocaleString('en-IN')} lifafas</span>}
+                      {f.shagunReceived > 0 && <span className="text-mehendi">🪙 ₹{f.shagunReceived.toLocaleString('en-IN')} received</span>}
+                    </div>
 
-                      {parts.length > 0 && (
-                        <ul className="mt-3 pt-3 border-t border-marigold/10 space-y-1.5">
-                          {parts.map(p => (
-                            <li key={p.id} className="flex gap-3 text-xs font-data">
-                              <span className="w-32 shrink-0 text-maroon/60 tabular-nums">{timeRange(p.start_time, p.end_time)}</span>
-                              <span className="text-maroon font-medium min-w-0">
-                                {p.name}
-                                {p.location && <span className="text-maroon/50 font-normal"> • {p.location}</span>}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </Link>
-                  </li>
+                    {clashWith && (
+                      <p className="mt-2 flex items-center font-data text-[11px] font-semibold text-rust-red">
+                        <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Overlaps with {clashWith.join(', ')}
+                      </p>
+                    )}
+
+                    {parts.length > 0 && (
+                      <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Parts of the function">
+                        {parts.slice(0, 4).map(p => (
+                          <li key={p.id} className="rounded-full bg-ivory px-2.5 py-1 font-data text-[11px] text-maroon ring-1 ring-marigold/25">
+                            {p.start_time && <span className="font-semibold tabular-nums text-maroon/60">{formatTime(p.start_time)} </span>}
+                            {p.name}
+                          </li>
+                        ))}
+                        {parts.length > 4 && (
+                          <li className="rounded-full px-2 py-1 font-data text-[11px] text-maroon/50">+{parts.length - 4} more</li>
+                        )}
+                      </ul>
+                    )}
+                  </Link>
                 )
               })}
-            </ol>
+            </div>
           </section>
         )
       })}
