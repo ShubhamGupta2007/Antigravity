@@ -51,6 +51,12 @@
 .inv-chip:active { transform: scale(.95) }
 .inv-envelope-out { transition: opacity .7s ease, visibility .7s ease }
 
+/* Opened card glows softly; the Enter button shimmers */
+@keyframes inv-card-glow { 0%, 100% { box-shadow: 0 10px 30px rgba(0,0,0,.25), 0 0 0 0 rgba(242,196,109,0) } 50% { box-shadow: 0 10px 30px rgba(0,0,0,.25), 0 0 34px 6px rgba(242,196,109,.45) } }
+.inv-card-glow { animation: inv-pull 1.5s cubic-bezier(.3, .7, .2, 1) .35s both, inv-card-glow 3s ease-in-out 1.9s infinite }
+@keyframes inv-enter-shine { to { background-position: 200% center } }
+.inv-enter { background-size: 200% auto; animation: inv-enter-shine 3s linear infinite }
+
 /* First page: night sky, lanterns and lotus pond */
 @keyframes inv-twinkle { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
 @keyframes inv-lantern { 0% { transform: translate(0, 0); opacity: 0 } 10% { opacity: 1 } 100% { transform: translate(30px, -95vh); opacity: 0 } }
@@ -75,6 +81,7 @@
   .inv-rise, .inv-pop { animation: none; opacity: 1 }
   .inv-pull { animation: none; transform: translateY(-62px); z-index: 6 }
   .inv-flap, .inv-letter, .inv-fade, .inv-chip, .inv-envelope-out { transition: none }
-  .inv-star, .inv-lantern, .inv-bob { animation: none }
+  .inv-star, .inv-lantern, .inv-bob, .inv-enter { animation: none }
+  .inv-card-glow { animation: none; transform: translateY(-62px); z-index: 6 }
   .inv-ganesh { animation: none; opacity: 1 }
 }

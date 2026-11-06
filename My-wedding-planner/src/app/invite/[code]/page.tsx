@@ -13,6 +13,7 @@ import {
 } from '@/lib/invite'
 import { loadInvitation } from './load'
 import Envelope from '../_components/Envelope'
+import Fireworks from '../_components/Fireworks'
 import { LockedGate, NotFoundGate, PinGate } from '../_components/Gate'
 import { Mandala, MandalaStar, Petals, Toran } from '../_components/Decor'
 
@@ -71,17 +72,18 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
         <section className="relative flex min-h-[100svh] flex-col items-center overflow-hidden bg-[#3A0B20] px-6 text-center text-[#FFF6E9]">
           <Mandala className="inv-mandala pointer-events-none absolute left-1/2 top-[11%] w-[700px] max-w-none -translate-x-1/2 opacity-20" />
           <MandalaStar className="inv-mandala-back pointer-events-none absolute left-1/2 top-[32%] w-[340px] max-w-none -translate-x-1/2 opacity-25" />
+          <Fireworks />
           <Toran />
           <Petals />
 
           <p className="inv-rise mt-24 font-[family-name:var(--font-devanagari)] text-lg text-[#F2C46D]" style={{ animationDelay: '0.1s' }}>॥ श्री गणेशाय नमः ॥</p>
           <p className="inv-rise mt-10 text-xs uppercase tracking-[4px] text-[#E9CBA7]" style={{ animationDelay: '0.35s' }}>Together with their families</p>
           <div className="inv-rise mt-4" style={{ animationDelay: '0.6s' }}>
-            <h1 className="inv-gold pb-3 font-display text-[86px] font-bold leading-[0.95]">{s.bride_name}</h1>
+            <h1 className="inv-gold pb-3 font-[family-name:var(--font-script)] text-[92px] leading-[1]">{s.bride_name}</h1>
           </div>
           <p className="inv-rise my-1.5 font-display text-[34px] italic text-[#F2C46D]" style={{ animationDelay: '0.85s' }}>weds</p>
           <div className="inv-rise" style={{ animationDelay: '1.05s' }}>
-            <p className="inv-gold pb-3 font-display text-[86px] font-bold leading-[0.95]">{s.groom_name}</p>
+            <p className="inv-gold pb-3 font-[family-name:var(--font-script)] text-[92px] leading-[1]">{s.groom_name}</p>
           </div>
           {weddingDate && (
             <div className="inv-rise mt-9 flex items-center gap-3.5" style={{ animationDelay: '1.3s' }}>
@@ -267,7 +269,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
         </section>
 
         <footer className="mt-14 bg-[#3A0B20] px-6 pb-14 pt-12 text-center text-[#F3DFC4]">
-          <p className="inv-gold pb-1 font-display text-[30px] font-semibold italic">With love, {s.bride_name} &amp; {s.groom_name}</p>
+          <p className="inv-gold pb-1 font-[family-name:var(--font-script)] text-[40px]">With love, {s.bride_name} &amp; {s.groom_name}</p>
           <p className="mt-3.5 text-xs text-[#D9B89A]">This invitation is only for {title.replace(/^The /, 'the ')}.</p>
         </footer>
       </main>
