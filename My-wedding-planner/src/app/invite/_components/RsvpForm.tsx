@@ -49,7 +49,8 @@ export default function RsvpForm({
 
   const [names, setNames] = useState<Record<string, NameAnswer>>(() =>
     Object.fromEntries(functions.map(f => [f.id, {
-      selected: f.rsvp?.status === 'confirmed' ? f.rsvp.member_ids : [],
+      // Not replied yet: everyone starts as coming; they untick whoever can't make it
+      selected: f.rsvp?.status === 'confirmed' ? f.rsvp.member_ids : f.rsvp?.status === 'declined' ? [] : members.map(m => m.id),
       declined: f.rsvp?.status === 'declined'
     }]))
   )
@@ -60,7 +61,9 @@ export default function RsvpForm({
         const total = (f.rsvp.adults || 0) + (f.rsvp.kids || 0)
         return [f.id, { size: Math.min(8, Math.max(1, total)), kids: Math.min(3, f.rsvp.kids || 0) }]
       }
-      return [f.id, { size: null, kids: 0 }]
+      // Not replied yet: start from the count the family was invited with, if we have one
+      const planned = (f.rsvp?.adults || 0) + (f.rsvp?.kids || 0)
+      return [f.id, planned > 0 ? { size: Math.min(8, planned), kids: Math.min(3, f.rsvp?.kids || 0) } : { size: null, kids: 0 }]
     }))
   )
 

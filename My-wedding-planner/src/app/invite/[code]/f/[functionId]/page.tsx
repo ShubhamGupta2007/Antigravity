@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { formatTime } from '@/lib/functionPlanning'
-import { calendarUrl, eventDateParts, mapsUrl, rsvpBadge, themeFor, type Invitation, type InviteGate } from '@/lib/invite'
+import { calendarUrl, eventDateParts, mapsUrl, themeFor, type Invitation, type InviteGate } from '@/lib/invite'
 import { loadInvitation } from '../../load'
 import { LockedGate, NotFoundGate, PinGate } from '../../../_components/Gate'
 import { Mandala } from '../../../_components/Decor'
@@ -26,10 +26,8 @@ export default async function InviteFunctionPage({ params }: { params: Promise<{
   const fn = inv.functions[index]
   const theme = themeFor(index, inv.functions.length)
   const date = eventDateParts(fn.event_date)
-  const badge = rsvpBadge(fn.rsvp)
   const map = mapsUrl(fn)
   const cal = calendarUrl(fn, `${inv.settings.bride_name} & ${inv.settings.groom_name}`)
-  const going = fn.rsvp?.status === 'confirmed' ? inv.family.members.filter(m => fn.rsvp?.member_ids.includes(m.id)).map(m => m.name) : []
   const dot = ['#D9A441', '#D9A441', '#8E1F2F', '#5B7C4F', '#8E1F2F']
 
   return (
@@ -48,15 +46,6 @@ export default async function InviteFunctionPage({ params }: { params: Promise<{
         </div>
       </section>
 
-      <section className="px-5 pt-4">
-        <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#E3EEDD] px-4 py-3.5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-[#3E5A35]">Your reply</p>
-            <p className="mt-0.5 text-[15px] text-[#2F4628]">{going.length ? going.join(', ') : badge.label}</p>
-          </div>
-          <Link href={`/invite/${code}/rsvp`} className="px-1 py-2.5 text-sm font-bold text-[#3E5A35]">{fn.rsvp?.status && fn.rsvp.status !== 'invited' ? 'Change' : 'Reply'}</Link>
-        </div>
-      </section>
 
       {(fn.segments.length > 0 || fn.start_time) && (
         <section className="px-5 pt-7">
@@ -110,7 +99,11 @@ export default async function InviteFunctionPage({ params }: { params: Promise<{
           <p className="whitespace-pre-line text-sm leading-relaxed text-[#5A3A1E]">{fn.guest_note}</p>
         </section>
       )}
-      <div className="h-12" />
+      <div className="px-5 pb-12 pt-8">
+        <Link href={`/invite/${code}/rsvp`} className="flex h-[54px] items-center justify-center rounded-full bg-[#3A0B20] text-base font-bold text-[#F2C46D]">
+          {fn.rsvp?.status && fn.rsvp.status !== 'invited' ? 'Change our reply' : 'Send our reply'}
+        </Link>
+      </div>
     </main>
   )
 }

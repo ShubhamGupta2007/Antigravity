@@ -1,14 +1,12 @@
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { parseEventDate } from '@/lib/functionPlanning'
+import { formatTime, parseEventDate } from '@/lib/functionPlanning'
 import {
   deadlineLabel,
-  eventDateParts,
   familyGreetingName,
   familyTitle,
   rsvpBadge,
   themeFor,
-  timeLabel,
   venueLine,
   type Invitation,
   type InviteGate
@@ -19,12 +17,6 @@ import { LockedGate, NotFoundGate, PinGate } from '../_components/Gate'
 import { Mandala, MandalaStar, Petals, Toran } from '../_components/Decor'
 
 export const dynamic = 'force-dynamic'
-
-const BADGE = {
-  yes: 'bg-[#E3EEDD] text-[#3E5A35]',
-  no: 'bg-[#F7E3E6] text-[#8E1F2F]',
-  wait: 'bg-[#FBEBD0] text-[#7A4B1E]'
-}
 
 export default async function InvitationPage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -44,6 +36,27 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
   const weddingDate = s.wedding_date ? format(parseEventDate(s.wedding_date), 'dd · MM · yyyy') : null
   const deadline = deadlineLabel(s)
   const awaiting = inv.functions.filter(f => !f.rsvp?.status || f.rsvp.status === 'invited').length
+  // Celebrations grouped by day, in order
+  const dayMap = new Map<string, typeof inv.functions>()
+  inv.functions.forEach(fn => {
+    const key = fn.event_date ? fn.event_date.slice(0, 10) : 'later'
+    dayMap.set(key, [...(dayMap.get(key) || []), fn])
+  })
+  const days = Array.from(dayMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, items], i, all) => {
+      const d = key === 'later' ? null : parseEventDate(key)
+      return {
+        key,
+        items: [...items].sort((a, b) => (a.start_time || '99').localeCompare(b.start_time || '99')),
+        dayNum: d ? format(d, 'd') : '–',
+        month: d ? format(d, 'MMM') : '',
+        weekday: d ? format(d, 'EEEE') : 'Date to follow',
+        theme: themeFor(i, all.length)
+      }
+    })
+  // What they've told us so far, shown only with the reply
+  const replied = inv.functions.filter(f => f.rsvp?.status === 'confirmed' || f.rsvp?.status === 'declined')
   const families = [
     s.groom_family_name && { label: 'Ladkewale', name: s.groom_family_name, cls: 'bg-[#FBEEDB] text-[#7A4B1E]' },
     s.bride_family_name && { label: 'Ladkiwale', name: s.bride_family_name, cls: 'bg-[#F7E3E6] text-[#8A2E45]' }
@@ -106,46 +119,56 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
           </figure>
         </section>
 
-        {/* Their celebrations */}
+        {/* Their celebrations, day by day */}
         <section className="px-5 pt-16">
           <div className="inv-reveal text-center">
             <p className="text-xs uppercase tracking-[4px] text-[#8A5A44]">Save the dates</p>
-            <h2 className="mb-6 mt-2.5 font-display text-[42px] font-semibold leading-none text-[#4A1029]">Celebrate with us</h2>
+            <h2 className="mb-8 mt-2.5 font-display text-[42px] font-semibold leading-none text-[#4A1029]">Celebrate with us</h2>
           </div>
-          <div className="flex flex-col gap-[18px]">
-            {inv.functions.map((fn, i) => {
-              const theme = themeFor(i, inv.functions.length)
-              const date = eventDateParts(fn.event_date)
-              const badge = rsvpBadge(fn.rsvp)
-              const venue = venueLine(fn)
-              return (
-                <article key={fn.id} className="inv-reveal relative overflow-hidden rounded-t-[150px] rounded-b-[22px] border border-[#EFDFCB] bg-white shadow-[0_14px_34px_rgba(74,16,41,0.10)]">
-                  <div className="flex h-[150px] flex-col items-center justify-end pb-4" style={{ background: theme.band, color: theme.ink }}>
-                    <p className="text-xs uppercase tracking-[3px]">{date.weekday}{date.short ? ` · ${date.short}` : ''}</p>
-                    <h3 className="mt-1.5 px-4 text-center font-display text-4xl font-semibold leading-none">{fn.name}</h3>
+          <div className="flex flex-col gap-4">
+            {days.map((day, d) => (
+              <article key={day.key} className="inv-reveal overflow-hidden rounded-[22px] border border-[#EFDFCB] bg-white shadow-[0_10px_28px_rgba(74,16,41,0.07)]">
+                <header className="flex items-center gap-4 border-b border-[#F3E7D8] px-5 py-4">
+                  <div className="flex h-[58px] w-[54px] shrink-0 flex-col items-center justify-center rounded-2xl" style={{ background: day.theme.band, color: day.theme.ink }}>
+                    <span className="font-display text-[28px] font-bold leading-none">{day.dayNum}</span>
+                    <span className="mt-0.5 text-[10px] font-bold uppercase tracking-[2px]">{day.month}</span>
                   </div>
-                  <div className="flex flex-col gap-2.5 px-5 pb-5 pt-[18px] text-center">
-                    {timeLabel(fn) && <p className="text-[15px] font-bold">{timeLabel(fn)}</p>}
-                    {venue && <p className="text-sm text-[#5A3A43]">{venue}</p>}
-                    {(fn.dress_code || fn.dress_colors?.length) && (
-                      <div className="flex items-center justify-center gap-2 text-[13px] text-[#6B4A52]">
-                        {(fn.dress_colors || []).slice(0, 4).map(c => (
-                          <span key={c} aria-hidden="true" className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: c }} />
-                        ))}
-                        {fn.dress_code}
-                      </div>
-                    )}
-                    <div className="mt-1.5 flex flex-wrap items-center justify-center gap-2.5">
-                      <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${BADGE[badge.tone]}`}>{badge.label}</span>
-                      <Link href={`/invite/${code}/f/${fn.id}`} className="px-1.5 py-2.5 text-sm font-bold text-[#8E1F2F] hover:text-[#5C1A33]">
-                        Details &amp; map
-                      </Link>
-                    </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[3px] text-[#8A5A44]">Day {d + 1}</p>
+                    <p className="font-display text-[22px] font-semibold leading-tight text-[#4A1029]">{day.weekday}</p>
                   </div>
-                </article>
-              )
-            })}
+                </header>
+                <ul className="divide-y divide-[#F3E7D8]">
+                  {day.items.map(fn => {
+                    const venue = venueLine(fn)
+                    return (
+                      <li key={fn.id}>
+                        <Link href={`/invite/${code}/f/${fn.id}`} className="group flex items-start gap-4 px-5 py-4 transition-colors hover:bg-[#FFF8EE]">
+                          <span className="w-[68px] shrink-0 pt-1.5 text-[13px] font-bold leading-tight text-[#8E1F2F]">
+                            {fn.start_time ? formatTime(fn.start_time) : 'Time soon'}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-display text-[26px] font-semibold leading-tight text-[#3B1424]">{fn.name}</span>
+                            {venue && <span className="mt-0.5 block text-sm text-[#6B4A52]">{venue}</span>}
+                            {(fn.dress_code || fn.dress_colors?.length) && (
+                              <span className="mt-1.5 flex items-center gap-1.5 text-xs text-[#6B4A52]">
+                                {(fn.dress_colors || []).slice(0, 4).map(c => (
+                                  <span key={c} aria-hidden="true" className="h-3 w-3 rounded-full border border-black/10" style={{ background: c }} />
+                                ))}
+                                {fn.dress_code}
+                              </span>
+                            )}
+                          </span>
+                          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C9A98E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-2.5 shrink-0 transition-transform group-hover:translate-x-0.5"><path d="M9 6l6 6-6 6" /></svg>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </article>
+            ))}
           </div>
+          <p className="mt-3 text-center text-xs text-[#8A5A44]">Tap a celebration for timings, venue and what to wear.</p>
         </section>
 
         {/* Reply */}
@@ -154,9 +177,25 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
             <g fill="none" stroke="#F2C46D" strokeWidth="0.8"><circle cx="100" cy="100" r="90" /><circle cx="100" cy="100" r="60" /><circle cx="100" cy="100" r="30" /></g>
           </svg>
           <p className="relative font-display text-[34px] font-semibold leading-[1.05]">Will you join us?</p>
-          <p className="relative mt-3 text-[15px] leading-relaxed text-[#F3DFC4]">
-            Let us know who is coming to each celebration{deadline ? `. Please reply by ${deadline}.` : '.'}
-          </p>
+          {replied.length > 0 ? (
+            <ul className="relative mx-auto mt-4 max-w-[300px] space-y-1.5 text-left text-sm text-[#F3DFC4]">
+              {inv.functions.map(f => {
+                const b = rsvpBadge(f.rsvp)
+                return (
+                  <li key={f.id} className="flex items-baseline justify-between gap-3 border-b border-white/10 pb-1.5">
+                    <span className="font-semibold text-[#FFF6E9]">{f.name}</span>
+                    <span className={b.tone === 'yes' ? 'text-[#BFD8B0]' : b.tone === 'no' ? 'text-[#F2B8C0]' : 'text-[#E9CBA7]'}>
+                      {b.tone === 'yes' ? 'Coming' : b.tone === 'no' ? 'Not coming' : 'No reply yet'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="relative mt-3 text-[15px] leading-relaxed text-[#F3DFC4]">
+              Let us know who is coming to each celebration{deadline ? `. Please reply by ${deadline}.` : '.'}
+            </p>
+          )}
           <Link
             href={`/invite/${code}/rsvp`}
             className="relative mx-auto mt-5 flex h-[54px] max-w-[280px] items-center justify-center rounded-full bg-[#F2C46D] text-base font-bold text-[#3A0B20]"
@@ -211,7 +250,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
           <h2 className="inv-reveal mb-2 font-display text-[34px] font-semibold text-[#4A1029]">Good to know</h2>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">What should we wear?</summary>
-            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colours, shown on its card and on its details page.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colours, shown in the schedule and on its details page.</p>
           </details>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">Can we change our reply later?</summary>

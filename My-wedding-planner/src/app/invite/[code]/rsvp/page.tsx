@@ -29,7 +29,7 @@ export default async function InviteRsvpPage({ params }: { params: Promise<{ cod
         <h1 className="inv-rise mt-3.5 font-display text-[44px] font-semibold leading-none">{namesMode ? 'Who’s coming?' : 'Will you join us?'}</h1>
         <p className="inv-rise mt-2.5 text-[15px] leading-relaxed text-[#F3DFC4]" style={{ animationDelay: '0.15s' }}>
           {namesMode
-            ? 'Tap the names of everyone joining each celebration. Someone missing? Add them.'
+            ? 'Everyone is ticked as coming. Untick anyone who can’t make it, or add someone we missed.'
             : `${title.replace(/^The /, '')}, tap how many of you will be with us at each celebration.`}
         </p>
       </header>
