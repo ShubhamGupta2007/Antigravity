@@ -30,8 +30,7 @@ export type InviteFunction = {
   dress_colors: string[] | null
   /** From 20_dress_themes.sql (absent before it is run) */
   dress_theme?: string | null
-  dress_him?: string | null
-  dress_her?: string | null
+  dress_style?: string | null
   guest_note: string | null
   segments: InviteSegment[]
   rsvp: InviteRsvp

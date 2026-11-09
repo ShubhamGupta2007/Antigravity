@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { formatTime } from '@/lib/functionPlanning'
-import { colorName, isLight, splitList } from '@/lib/dressThemes'
+import { colorName, isLight, styleLabel } from '@/lib/dressThemes'
 import { calendarUrl, eventDateParts, mapsUrl, themeFor, type Invitation, type InviteGate } from '@/lib/invite'
 import { loadInvitation } from '../../load'
 import { LockedGate, NotFoundGate, PinGate } from '../../../_components/Gate'
@@ -82,17 +82,24 @@ export default async function InviteFunctionPage({ params }: { params: Promise<{
         </section>
       )}
 
-      {(fn.dress_theme || fn.dress_colors?.length || fn.dress_him || fn.dress_her || fn.dress_code) && (
+      {(fn.dress_theme || fn.dress_colors?.length) && (
         <section className="px-5 pt-7">
-          <h2 className="inv-reveal mb-3.5 font-display text-[28px] font-semibold text-[#4A1029]">What to wear</h2>
+          <h2 className="inv-reveal mb-3.5 font-display text-[28px] font-semibold text-[#4A1029]">Colour theme</h2>
           <div className="inv-reveal overflow-hidden rounded-[22px] border border-[#EBD9C3] bg-white">
             {(fn.dress_colors?.length || 0) > 0 && (
               <div className="flex h-24" aria-hidden="true">
                 {(fn.dress_colors || []).map(c => <span key={c} className="flex-1" style={{ background: c }} />)}
               </div>
             )}
-            <div className="space-y-4 p-5">
-              {fn.dress_theme && <p className="font-display text-[26px] font-semibold leading-tight text-[#4A1029]">{fn.dress_theme}</p>}
+            <div className="space-y-3.5 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {fn.dress_theme && <p className="font-display text-[26px] font-semibold leading-tight text-[#4A1029]">{fn.dress_theme}</p>}
+                {styleLabel(fn.dress_style) && (
+                  <span className="rounded-full bg-[#FFF8EE] px-3 py-1.5 text-sm font-semibold text-[#5C1A33] ring-1 ring-[#EBD9C3]">
+                    {styleLabel(fn.dress_style)!.icon} {styleLabel(fn.dress_style)!.label}
+                  </span>
+                )}
+              </div>
               {(fn.dress_colors?.length || 0) > 0 && (
                 <ul className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Colours">
                   {(fn.dress_colors || []).map(c => (
@@ -103,19 +110,6 @@ export default async function InviteFunctionPage({ params }: { params: Promise<{
                   ))}
                 </ul>
               )}
-              {(splitList(fn.dress_him).length > 0 || splitList(fn.dress_her).length > 0) && (
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {([['👔', 'For him', splitList(fn.dress_him)], ['🥻', 'For her', splitList(fn.dress_her)]] as const).map(([icon, label, list]) =>
-                    list.length > 0 ? (
-                      <div key={label} className="rounded-2xl bg-[#FFF8EE] px-4 py-3">
-                        <p className="text-xs font-bold uppercase tracking-[2px] text-[#8A5A44]">{icon} {label}</p>
-                        <p className="mt-1 text-[15px] font-semibold text-[#3B1424]">{list.join(' · ')}</p>
-                      </div>
-                    ) : null
-                  )}
-                </div>
-              )}
-              {fn.dress_code && <p className="text-sm leading-relaxed text-[#5A3A43]">{fn.dress_code}</p>}
             </div>
           </div>
         </section>

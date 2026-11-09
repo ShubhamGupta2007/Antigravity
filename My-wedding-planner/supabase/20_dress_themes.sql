@@ -1,16 +1,14 @@
 -- 20_dress_themes.sql
--- "What to wear" for each function: a named colour theme (on top of the colours already
--- saved in dress_colors) and outfit ideas for him and for her, shown on the guest invitation.
---   functions.dress_theme  e.g. "Sunshine yellow"
---   functions.dress_him    e.g. "Kurta-pyjama, Nehru jacket"
---   functions.dress_her    e.g. "Saree, Anarkali"
--- get_invitation() is re-created unchanged apart from returning these three fields.
+-- A colour theme for each function on the guest invitation: a name (on top of the colours
+-- already saved in dress_colors) and an optional style.
+--   functions.dress_theme  e.g. "Pastels"
+--   functions.dress_style  'indian' | 'western' | 'indo_western' | 'any'
+-- get_invitation() is re-created unchanged apart from returning these two fields.
 -- Run once in the Supabase SQL editor (after 14). Safe to re-run.
 
 alter table public.functions
   add column if not exists dress_theme text,
-  add column if not exists dress_him text,
-  add column if not exists dress_her text;
+  add column if not exists dress_style text;
 
 create or replace function public.get_invitation(p_code text, p_pin text default null)
 returns jsonb
@@ -73,8 +71,7 @@ begin
                    'dress_code', f.dress_code,
                    'dress_colors', f.dress_colors,
                    'dress_theme', f.dress_theme,
-                   'dress_him', f.dress_him,
-                   'dress_her', f.dress_her,
+                   'dress_style', f.dress_style,
                    'guest_note', f.guest_note,
                    'segments', coalesce((
                       select jsonb_agg(jsonb_build_object('name', s.name, 'start_time', s.start_time, 'end_time', s.end_time, 'location', s.location, 'notes', s.notes)

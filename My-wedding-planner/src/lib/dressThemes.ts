@@ -31,28 +31,34 @@ export const NAMED_COLORS: NamedColor[] = [
   { hex: '#1A1A1A', name: 'Black' }
 ]
 
-export const OUTFITS_HIM = ['Kurta-pyjama', 'Kurta with Nehru jacket', 'Sherwani', 'Bandhgala', 'Indo-western', 'Dhoti-kurta', 'Pathani suit', 'Suit']
-export const OUTFITS_HER = ['Saree', 'Lehenga', 'Anarkali', 'Suit / salwar', 'Sharara', 'Gharara', 'Lehenga saree', 'Indo-western']
+export type DressStyle = 'indian' | 'western' | 'indo_western' | 'any'
+export const DRESS_STYLES: { value: DressStyle; label: string; icon: string }[] = [
+  { value: 'indian', label: 'Indian wear', icon: '🪷' },
+  { value: 'western', label: 'Western wear', icon: '👔' },
+  { value: 'indo_western', label: 'Indo-western', icon: '✨' },
+  { value: 'any', label: 'Guest’s choice', icon: '💫' }
+]
+export const styleLabel = (v: string | null | undefined) => DRESS_STYLES.find(s => s.value === v) || null
 
-export type DressTheme = { theme: string; colors: string[]; him: string[]; her: string[] }
+export type DressTheme = { theme: string; colors: string[]; style: DressStyle }
 
 /** Ready-made looks; the first whose keywords match the function's name is suggested. */
 export const THEME_PRESETS: (DressTheme & { keywords: RegExp })[] = [
-  { keywords: /haldi|pithi|ubtan/i, theme: 'Sunshine yellow', colors: ['#F4C430', '#FFB347', '#FFF1C9'], him: ['Kurta-pyjama'], her: ['Suit / salwar', 'Anarkali'] },
-  { keywords: /mehendi|mehndi|henna/i, theme: 'Mehendi green & pink', colors: ['#5E8C31', '#A8D5A2', '#E0115F'], him: ['Kurta-pyjama', 'Kurta with Nehru jacket'], her: ['Lehenga', 'Sharara'] },
-  { keywords: /sangeet|cocktail|dj|night/i, theme: 'Jewel tones', colors: ['#1F3A93', '#6B3FA0', '#2E6B5E', '#D4AF37'], him: ['Indo-western', 'Bandhgala'], her: ['Lehenga', 'Indo-western'] },
-  { keywords: /chowki|jagran|puja|pooja|path|havan|satsang/i, theme: 'Red & yellow', colors: ['#B22222', '#F4C430', '#FF8C42'], him: ['Kurta-pyjama'], her: ['Saree', 'Suit / salwar'] },
-  { keywords: /engage|ring|roka|sagai/i, theme: 'Pastels', colors: ['#F4B6C2', '#FFCBA4', '#C8A2C8', '#A8D5A2'], him: ['Kurta with Nehru jacket', 'Indo-western'], her: ['Lehenga', 'Anarkali'] },
-  { keywords: /reception/i, theme: 'Royal evening', colors: ['#1A1A1A', '#C0C0C0', '#1F3A93', '#5C1A33'], him: ['Suit', 'Bandhgala'], her: ['Saree', 'Indo-western'] },
-  { keywords: /wedding|shaadi|vivah|phere|pheras|baraat/i, theme: 'Red & gold', colors: ['#7B1E3A', '#B22222', '#D4AF37', '#FFFFF0'], him: ['Sherwani', 'Kurta with Nehru jacket'], her: ['Lehenga', 'Saree'] }
+  { keywords: /haldi|pithi|ubtan/i, theme: 'Sunshine yellow', colors: ['#F4C430', '#FFB347', '#FFF1C9'], style: 'indian' },
+  { keywords: /mehendi|mehndi|henna/i, theme: 'Mehendi green & pink', colors: ['#5E8C31', '#A8D5A2', '#E0115F'], style: 'indian' },
+  { keywords: /sangeet|cocktail|dj|night/i, theme: 'Jewel tones', colors: ['#1F3A93', '#6B3FA0', '#2E6B5E', '#D4AF37'], style: 'indo_western' },
+  { keywords: /chowki|jagran|puja|pooja|path|havan|satsang/i, theme: 'Red & yellow', colors: ['#B22222', '#F4C430', '#FF8C42'], style: 'indian' },
+  { keywords: /engage|ring|roka|sagai/i, theme: 'Pastels', colors: ['#F4B6C2', '#FFCBA4', '#C8A2C8', '#A8D5A2'], style: 'indian' },
+  { keywords: /reception/i, theme: 'Royal evening', colors: ['#1A1A1A', '#C0C0C0', '#1F3A93', '#5C1A33'], style: 'indo_western' },
+  { keywords: /wedding|shaadi|vivah|phere|pheras|baraat/i, theme: 'Red & gold', colors: ['#7B1E3A', '#B22222', '#D4AF37', '#FFFFF0'], style: 'indian' }
 ]
 
 /** Shown as quick picks even when the name matches nothing. */
-export const THEME_CHOICES = THEME_PRESETS.map(({ theme, colors, him, her }) => ({ theme, colors, him, her }))
+export const THEME_CHOICES = THEME_PRESETS.map(({ theme, colors, style }) => ({ theme, colors, style }))
 
 export function suggestedTheme(functionName: string): DressTheme | null {
   const p = THEME_PRESETS.find(t => t.keywords.test(functionName))
-  return p ? { theme: p.theme, colors: p.colors, him: p.him, her: p.her } : null
+  return p ? { theme: p.theme, colors: p.colors, style: p.style } : null
 }
 
 const rgb = (hex: string) => {
@@ -81,5 +87,3 @@ export function isLight(hex: string) {
   const [r, g, b] = rgb(hex)
   return 0.299 * r + 0.587 * g + 0.114 * b > 215
 }
-
-export const splitList = (s: string | null | undefined) => (s || '').split(',').map(x => x.trim()).filter(Boolean)

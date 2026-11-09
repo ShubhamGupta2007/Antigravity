@@ -744,8 +744,7 @@ export default async function FunctionDetailPage({
             dress_colors: func.dress_colors ?? null,
             guest_note: func.guest_note ?? null,
             dress_theme: func.dress_theme ?? null,
-            dress_him: func.dress_him ?? null,
-            dress_her: func.dress_her ?? null
+            dress_style: func.dress_style ?? null
           }}
           functionName={func.name}
           themesReady={'dress_theme' in func}

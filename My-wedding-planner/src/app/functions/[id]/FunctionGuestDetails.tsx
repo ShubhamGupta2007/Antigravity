@@ -7,7 +7,7 @@ import { createClient } from '@/lib/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { colorName, isLight, NAMED_COLORS, OUTFITS_HER, OUTFITS_HIM, splitList, suggestedTheme, THEME_CHOICES, type DressTheme } from '@/lib/dressThemes'
+import { colorName, DRESS_STYLES, isLight, NAMED_COLORS, styleLabel, suggestedTheme, THEME_CHOICES, type DressTheme } from '@/lib/dressThemes'
 
 export type GuestDetails = {
   venue_name: string | null
@@ -18,8 +18,7 @@ export type GuestDetails = {
   guest_note: string | null
   /** Needs 20_dress_themes.sql */
   dress_theme?: string | null
-  dress_him?: string | null
-  dress_her?: string | null
+  dress_style?: string | null
 }
 
 /** What guests see about this function on their invitation: venue, map, dress code, a note. */
@@ -40,14 +39,8 @@ export default function FunctionGuestDetails({
   const [open, setOpen] = useState(!initial.venue_name && !initial.dress_code)
   const [saving, setSaving] = useState(false)
   const colors = d.dress_colors || []
-  const him = splitList(d.dress_him)
-  const her = splitList(d.dress_her)
   const suggestion = suggestedTheme(functionName)
-  const applyTheme = (t: DressTheme) => set({ dress_theme: t.theme, dress_colors: t.colors, dress_him: t.him.join(', '), dress_her: t.her.join(', ') })
-  const toggleOutfit = (field: 'dress_him' | 'dress_her', item: string) => {
-    const list = field === 'dress_him' ? him : her
-    set({ [field]: (list.includes(item) ? list.filter(x => x !== item) : [...list, item]).join(', ') })
-  }
+  const applyTheme = (t: DressTheme) => set({ dress_theme: t.theme, dress_colors: t.colors, dress_style: d.dress_style || t.style })
   const toggleColor = (hex: string) =>
     set({ dress_colors: colors.some(c => c.toLowerCase() === hex.toLowerCase()) ? colors.filter(c => c.toLowerCase() !== hex.toLowerCase()) : colors.length < 5 ? [...colors, hex] : colors })
 
@@ -65,7 +58,7 @@ export default function FunctionGuestDetails({
         dress_code: clean(d.dress_code),
         dress_colors: colors.length ? colors : null,
         guest_note: clean(d.guest_note),
-        ...(themesReady ? { dress_theme: clean(d.dress_theme ?? null), dress_him: clean(d.dress_him ?? null), dress_her: clean(d.dress_her ?? null) } : {})
+        ...(themesReady ? { dress_theme: clean(d.dress_theme ?? null), dress_style: d.dress_style || null } : {})
       })
       .eq('id', functionId)
     setSaving(false)
@@ -91,10 +84,10 @@ export default function FunctionGuestDetails({
         <dl className="space-y-1.5 font-data text-sm text-maroon/80">
           <div><dt className="inline font-semibold text-maroon">Venue: </dt><dd className="inline">{d.venue_name || '—'}{d.venue_address ? `, ${d.venue_address}` : ''}</dd></div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <dt className="font-semibold text-maroon">Wear: </dt>
+            <dt className="font-semibold text-maroon">Colour theme: </dt>
             <dd className="flex flex-wrap items-center gap-1.5">
               {colors.map(c => <span key={c} aria-hidden="true" className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: c }} />)}
-              {[d.dress_theme, him.length ? `Him: ${him.join(', ')}` : null, her.length ? `Her: ${her.join(', ')}` : null, d.dress_code].filter(Boolean).join(' · ') || (colors.length ? '' : '—')}
+              {[d.dress_theme, styleLabel(d.dress_style)?.label].filter(Boolean).join(' · ') || (colors.length ? '' : '—')}
             </dd>
           </div>
           {d.guest_note && <div><dt className="inline font-semibold text-maroon">Note: </dt><dd className="inline">{d.guest_note}</dd></div>}
@@ -117,7 +110,7 @@ export default function FunctionGuestDetails({
             <Input id="map_url" type="url" value={d.map_url || ''} onChange={e => set({ map_url: e.target.value })} placeholder="https://maps.app.goo.gl/…" className="h-9 border-marigold/50 bg-white text-sm" />
           </div>
           <fieldset className="space-y-3 rounded-xl border border-marigold/25 bg-ivory/40 p-3">
-            <legend className="px-1 text-xs font-bold text-maroon">👗 What to wear</legend>
+            <legend className="px-1 text-xs font-bold text-maroon">🎨 Colour theme</legend>
 
             <div className="space-y-1.5">
               <p className="text-[11px] font-semibold text-maroon/70">Quick themes{suggestion ? ` · suggested for ${functionName}: ${suggestion.theme}` : ''}</p>
@@ -171,34 +164,23 @@ export default function FunctionGuestDetails({
             </div>
 
             {themesReady ? (
-              (['dress_him', 'dress_her'] as const).map(field => {
-                const list = field === 'dress_him' ? him : her
-                const options = field === 'dress_him' ? OUTFITS_HIM : OUTFITS_HER
-                return (
-                  <div key={field} className="space-y-1.5">
-                    <p className="text-xs font-semibold text-maroon">{field === 'dress_him' ? '👔 For him' : '🥻 For her'}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[...options, ...list.filter(x => !options.includes(x))].map(o => {
-                        const on = list.includes(o)
-                        return (
-                          <button key={o} type="button" aria-pressed={on} onClick={() => toggleOutfit(field, o)}
-                            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${on ? 'border-mehendi bg-mehendi text-white' : 'border-marigold/30 bg-white text-maroon hover:bg-marigold/10'}`}>
-                            {on ? '✓ ' : ''}{o}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-maroon">Style <span className="font-normal text-maroon/50">(optional)</span></p>
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Style">
+                  {DRESS_STYLES.map(st => {
+                    const on = d.dress_style === st.value
+                    return (
+                      <button key={st.value} type="button" role="radio" aria-checked={on} onClick={() => set({ dress_style: on ? null : st.value })}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${on ? 'border-maroon bg-maroon text-ivory' : 'border-marigold/30 bg-white text-maroon hover:bg-marigold/10'}`}>
+                        {st.icon} {st.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             ) : (
-              <p className="text-[11px] text-maroon/60">Run <b>supabase/20_dress_themes.sql</b> to add a theme name and outfit ideas for him and her.</p>
+              <p className="text-[11px] text-maroon/60">Run <b>supabase/20_dress_themes.sql</b> to add a theme name and style.</p>
             )}
-
-            <div className="space-y-1">
-              <Label htmlFor="dress_code" className="text-xs font-semibold text-maroon">Anything else about clothes <span className="font-normal text-maroon/50">(optional)</span></Label>
-              <Input id="dress_code" value={d.dress_code || ''} onChange={e => set({ dress_code: e.target.value })} placeholder="e.g. Please avoid black · Comfortable shoes, it's on grass" className="h-9 border-marigold/50 bg-white text-sm" />
-            </div>
           </fieldset>
           <div className="space-y-1">
             <Label htmlFor="guest_note" className="text-xs font-semibold text-maroon">Note for guests <span className="font-normal text-maroon/50">(optional)</span></Label>

@@ -12,6 +12,7 @@ import {
   type InviteGate
 } from '@/lib/invite'
 import { loadInvitation } from './load'
+import { styleLabel } from '@/lib/dressThemes'
 import Envelope from '../_components/Envelope'
 import Fireworks from '../_components/Fireworks'
 import { LockedGate, NotFoundGate, PinGate } from '../_components/Gate'
@@ -152,7 +153,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
                           <span className="min-w-0 flex-1">
                             <span className="block font-display text-[26px] font-semibold leading-tight text-[#3B1424]">{fn.name}</span>
                             {venue && <span className="mt-0.5 block text-sm text-[#6B4A52]">{venue}</span>}
-                            {(fn.dress_theme || fn.dress_colors?.length || fn.dress_code) && (
+                            {(fn.dress_theme || fn.dress_colors?.length) && (
                               <span className="mt-2 flex items-center gap-2 text-xs text-[#6B4A52]">
                                 {(fn.dress_colors?.length || 0) > 0 && (
                                   <span className="flex -space-x-1.5" aria-hidden="true">
@@ -161,7 +162,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
                                     ))}
                                   </span>
                                 )}
-                                <span className="font-semibold">{fn.dress_theme || fn.dress_code || 'Dress colours'}</span>
+                                <span className="font-semibold">{[fn.dress_theme || 'Colour theme', styleLabel(fn.dress_style)?.label].filter(Boolean).join(' · ')}</span>
                               </span>
                             )}
                           </span>
@@ -256,7 +257,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
           <h2 className="inv-reveal mb-2 font-display text-[34px] font-semibold text-[#4A1029]">Good to know</h2>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">What should we wear?</summary>
-            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colour theme and outfit ideas. Tap a celebration in the schedule to see them.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colour theme, shown in the schedule. What you wear in those colours is up to you.</p>
           </details>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">Can we change our reply later?</summary>

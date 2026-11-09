@@ -19,7 +19,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `17_lifafa_per_person.sql` | family lifafa exceptions set person by person |
 | `18_small_kids.sql` | small kids as a third age group for gifting (e.g. adults ₹1,100, kids ₹500, small kids ₹250) |
 | `19_estimated_guests.sql` | estimated guests not on the guest list, for big functions |
-| `20_dress_themes.sql` | what to wear per function: colour theme name and outfit ideas for him and her on the invitation |
+| `20_dress_themes.sql` | colour theme per function on the invitation: theme name and style (Indian, Western…) |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.
