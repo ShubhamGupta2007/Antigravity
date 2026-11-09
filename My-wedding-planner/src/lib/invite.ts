@@ -28,6 +28,10 @@ export type InviteFunction = {
   map_url: string | null
   dress_code: string | null
   dress_colors: string[] | null
+  /** From 20_dress_themes.sql (absent before it is run) */
+  dress_theme?: string | null
+  dress_him?: string | null
+  dress_her?: string | null
   guest_note: string | null
   segments: InviteSegment[]
   rsvp: InviteRsvp

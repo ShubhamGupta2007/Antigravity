@@ -152,12 +152,16 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
                           <span className="min-w-0 flex-1">
                             <span className="block font-display text-[26px] font-semibold leading-tight text-[#3B1424]">{fn.name}</span>
                             {venue && <span className="mt-0.5 block text-sm text-[#6B4A52]">{venue}</span>}
-                            {(fn.dress_code || fn.dress_colors?.length) && (
-                              <span className="mt-1.5 flex items-center gap-1.5 text-xs text-[#6B4A52]">
-                                {(fn.dress_colors || []).slice(0, 4).map(c => (
-                                  <span key={c} aria-hidden="true" className="h-3 w-3 rounded-full border border-black/10" style={{ background: c }} />
-                                ))}
-                                {fn.dress_code}
+                            {(fn.dress_theme || fn.dress_colors?.length || fn.dress_code) && (
+                              <span className="mt-2 flex items-center gap-2 text-xs text-[#6B4A52]">
+                                {(fn.dress_colors?.length || 0) > 0 && (
+                                  <span className="flex -space-x-1.5" aria-hidden="true">
+                                    {(fn.dress_colors || []).slice(0, 5).map(c => (
+                                      <span key={c} className="h-4 w-4 rounded-full ring-2 ring-white" style={{ background: c }} />
+                                    ))}
+                                  </span>
+                                )}
+                                <span className="font-semibold">{fn.dress_theme || fn.dress_code || 'Dress colours'}</span>
                               </span>
                             )}
                           </span>
@@ -252,7 +256,7 @@ export default async function InvitationPage({ params }: { params: Promise<{ cod
           <h2 className="inv-reveal mb-2 font-display text-[34px] font-semibold text-[#4A1029]">Good to know</h2>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">What should we wear?</summary>
-            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colours, shown in the schedule and on its details page.</p>
+            <p className="mt-2 text-sm leading-relaxed text-[#5A3A43]">Each celebration has its own colour theme and outfit ideas. Tap a celebration in the schedule to see them.</p>
           </details>
           <details className="border-b border-[#EBD9C3] py-4">
             <summary className="cursor-pointer text-[15px] font-bold">Can we change our reply later?</summary>

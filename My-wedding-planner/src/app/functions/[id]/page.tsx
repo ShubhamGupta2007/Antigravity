@@ -742,8 +742,13 @@ export default async function FunctionDetailPage({
             map_url: func.map_url ?? null,
             dress_code: func.dress_code ?? null,
             dress_colors: func.dress_colors ?? null,
-            guest_note: func.guest_note ?? null
+            guest_note: func.guest_note ?? null,
+            dress_theme: func.dress_theme ?? null,
+            dress_him: func.dress_him ?? null,
+            dress_her: func.dress_her ?? null
           }}
+          functionName={func.name}
+          themesReady={'dress_theme' in func}
         />
       )}
     </div>
