@@ -1,7 +1,8 @@
 -- 22_wedding_plan_tasks.sql
 -- The wedding plan as tasks with deadlines, worked back from lead times (outfits need weeks of
 -- stitching, cards need Pandit ji's timings, bhaji boxes are delivered fresh on 15 Jan).
--- Planning ends on Sun 10 Jan; 28 Nov – 2 Dec (Chandan's wedding) and 15 Dec are kept free.
+-- Planning ends on Sun 10 Jan; 15 Nov (Chandan in Muzaffarnagar) and 28 Nov – 2 Dec (Chandan's
+-- wedding) are kept free.
 -- They show in Tasks and in the home page's Weekend planner, where you can tick them off,
 -- change dates or add more.
 -- Run in the Supabase SQL editor (after 13). Safe to re-run: new plan tasks are added, plan tasks
@@ -18,8 +19,8 @@ begin
 
   create temporary table plan_rows (title text, deadline date, priority text, description text) on commit drop;
   insert into plan_rows values
-      ('Confirm muhurat & every function''s timings with Pandit ji', date '2026-11-15', 'urgent', 'Needed before the cards are printed. Also get the samagri list for each ritual.'),
-      ('Car: shortlist 2–3 models and take test drives', date '2026-11-22', 'must_have', 'Test drives this weekend and next; compare on-road price, waiting period and colour.'),
+      ('Confirm muhurat & every function''s timings with Pandit ji', date '2026-11-14', 'urgent', 'Saturday, since Sunday 15 Nov is taken. Needed before the cards are printed. Also get the samagri list for each ritual.'),
+      ('Car: shortlist 2–3 models and take test drives', date '2026-11-22', 'must_have', 'Test drives on 14 and 21–22 Nov; compare on-road price, waiting period and colour.'),
       ('Finalise the guest list for every function', date '2026-11-22', 'urgent', 'Who is invited to which function, in the app. It decides the card count, catering, gifts and bhaji boxes.'),
       ('Bhai''s wedding outfit: order the sherwani', date '2026-11-22', 'urgent', 'A custom sherwani takes 4–6 weeks plus a trial. Order now so it is ready by early January. Include safa, mojdi and stole.'),
       ('Wedding cards: finalise design, wording and quantity', date '2026-11-22', 'urgent', 'Use Pandit ji''s timings and the guest count, plus about 10% spare.'),

@@ -22,8 +22,8 @@ export const HOLIDAYS: DayNote[] = [
 /** Days already taken for something else (a span has an end date) */
 export type Blocked = DayNote & { to?: string }
 export const BLOCKED: Blocked[] = [
-  { date: '2026-11-28', to: '2026-12-02', label: 'Away for Chandan’s wedding' },
-  { date: '2026-12-15', label: 'Chandan in Muzaffarnagar' }
+  { date: '2026-11-15', label: 'Chandan in Muzaffarnagar' },
+  { date: '2026-11-28', to: '2026-12-02', label: 'Away for Chandan’s wedding' }
 ]
 const blockedOn = (d: string) => BLOCKED.some(b => d >= b.date && d <= (b.to || b.date))
 /** Blocked spans that touch [from, to] */
