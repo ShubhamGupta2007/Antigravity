@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { blockedIn, blockedLabel, HOLIDAYS, PLAN_END, shortDay, timeLeft, todayIST, weekendLabel, weekendsLeft } from '@/lib/planCalendar'
+import { blockedIn, blockedLabel, HOLIDAYS, mummyDaysIn, mummyFree, needsMummy, PLAN_END, shortDay, timeLeft, todayIST, weekendLabel, weekendsLeft } from '@/lib/planCalendar'
 
 export type PlannerTask = { id: string; title: string; deadline: string | null; priority_tier: string; status: string }
 
@@ -52,7 +52,7 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
         <Link href="/tasks/add" className="font-data text-xs font-semibold text-maroon underline decoration-marigold/50 underline-offset-4">+ Add a task</Link>
       </div>
       <p className="mt-1 font-data text-xs text-maroon/60">
-        Planning runs till Sun 10 Jan; after that we manage on the days. Every open task sits under the weekend it has to be done by.{noDate > 0 ? ` ${noDate} task${noDate === 1 ? ' has' : 's have'} no date yet.` : ''}
+        Planning runs till Sun 10 Jan; after that we manage on the days. Every open task sits under the weekend it has to be done by. 🌸 needs Mummy, who is free on Sundays and school holidays.{noDate > 0 ? ` ${noDate} task${noDate === 1 ? ' has' : 's have'} no date yet.` : ''}
       </p>
 
       {overdue.length > 0 && (
@@ -80,6 +80,7 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
             ...blockedIn(w.from, w.to).map(b => ({ key: b.date, text: `${blockedLabel(b)} · ${b.label}`, kind: 'blocked' as const }))
           ]
           const long = w.extra.some(h => h.date < w.sat || h.date > w.sun)
+          const mummyDays = mummyDaysIn(w.from, w.to)
           return (
             <li key={w.sat} className="relative">
               <span className={`absolute -left-[27px] top-3 h-3 w-3 rounded-full border-2 border-ivory ${due.length ? 'bg-maroon' : 'bg-marigold/50'}`} aria-hidden="true" />
@@ -96,6 +97,9 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
                     {due.length > 0 && <span className="rounded-full bg-marigold/20 px-2 py-0.5 text-maroon">{due.length} to do</span>}
                   </div>
                 </div>
+                {mummyDays.length > 0 && (
+                  <p className="mt-1 font-data text-[11px] font-semibold text-rani-pink">🌸 Mummy free: {mummyDays.map(d => shortDay(d).split(',')[0]).join(', ')}</p>
+                )}
                 {notes.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5 font-data text-[11px]">
                     {notes.map(n => (
@@ -109,13 +113,22 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
                   <p className="mt-2 font-data text-xs italic text-maroon/40">{w.away ? 'Nothing planned. Enjoy the wedding!' : 'Nothing due. A free weekend.'}</p>
                 ) : (
                   <ul className="mt-2.5 space-y-1.5">
-                    {due.map(x => (
-                      <li key={x.id} className="flex items-start gap-2 font-data text-sm text-maroon">
-                        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[x.priority_tier] || 'bg-maroon/30'}`} />
-                        <span className="min-w-0 flex-1">{x.title}</span>
-                        <span className="shrink-0 pt-0.5 text-[11px] text-maroon/50">by {shortDay(x.deadline!.slice(0, 10)).split(',')[0]}</span>
-                      </li>
-                    ))}
+                    {due.map(x => {
+                      const d = x.deadline!.slice(0, 10)
+                      const mummy = needsMummy(x.title)
+                      const clash = mummy && !mummyFree(d)
+                      return (
+                        <li key={x.id} className="flex items-start gap-2 font-data text-sm text-maroon">
+                          <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[x.priority_tier] || 'bg-maroon/30'}`} />
+                          <span className="min-w-0 flex-1">
+                            {mummy && <span aria-label="Needs Mummy" className="mr-1">🌸</span>}
+                            {x.title}
+                            {clash && <span className="mt-0.5 block text-[11px] font-semibold text-rust-red">Mummy has school that day; move it to a Sunday</span>}
+                          </span>
+                          <span className="shrink-0 pt-0.5 text-[11px] text-maroon/50">by {shortDay(d).split(',')[0]}</span>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </div>

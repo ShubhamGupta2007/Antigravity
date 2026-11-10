@@ -19,6 +19,11 @@ export const HOLIDAYS: DayNote[] = [
   { date: '2027-01-14', label: 'Makar Sankranti' }
 ]
 
+/** Mummy teaches: she is free on Sundays and on these school holidays only */
+export const MUMMY_SCHOOL_HOLIDAYS = ['2026-11-24', '2026-12-25', '2027-01-01']
+/** Tasks that need Mummy mention her in the title */
+export const needsMummy = (title: string) => /mumm/i.test(title)
+
 /** Days already taken for something else (a span has an end date) */
 export type Blocked = DayNote & { to?: string }
 export const BLOCKED: Blocked[] = [
@@ -121,6 +126,18 @@ export function weekendLabel(w: Weekend) {
   const e = at(w.sun)
   const m = (d: Date) => d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })
   return `Sat ${s.getUTCDate()}${m(s) === m(e) ? '' : ` ${m(s)}`} – Sun ${e.getUTCDate()} ${m(e)}`
+}
+
+/** Is Mummy free that day (a Sunday or a school holiday, and not blocked)? */
+export function mummyFree(d: string) {
+  return !blockedOn(d) && (at(d).getUTCDay() === 0 || MUMMY_SCHOOL_HOLIDAYS.includes(d))
+}
+
+/** Mummy's free days within [from, to] */
+export function mummyDaysIn(from: string, to: string) {
+  const out: string[] = []
+  for (let d = from; d <= to; d = addDays(d, 1)) if (mummyFree(d)) out.push(d)
+  return out
 }
 
 /** "Sat 28 Nov – Wed 2 Dec" or a single day */
