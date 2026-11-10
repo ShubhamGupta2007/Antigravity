@@ -2,8 +2,8 @@
 // weekend planner. Dates are plain YYYY-MM-DD in India time.
 
 export const WEDDING_DAY = '2027-01-19'
-/** First function day; the last weekend before it is the final one for errands */
-export const FIRST_FUNCTION_DAY = '2027-01-17'
+/** Planning stops here; whatever is left after this gets managed on the days */
+export const PLAN_END = '2027-01-10'
 
 export type DayNote = { date: string; label: string }
 
@@ -19,8 +19,15 @@ export const HOLIDAYS: DayNote[] = [
   { date: '2027-01-14', label: 'Makar Sankranti' }
 ]
 
-/** Days already taken for something else */
-export const BLOCKED: DayNote[] = [{ date: '2026-12-15', label: 'Chandan in Muzaffarnagar' }]
+/** Days already taken for something else (a span has an end date) */
+export type Blocked = DayNote & { to?: string }
+export const BLOCKED: Blocked[] = [
+  { date: '2026-11-28', to: '2026-12-02', label: 'Away for Chandan’s wedding' },
+  { date: '2026-12-15', label: 'Chandan in Muzaffarnagar' }
+]
+const blockedOn = (d: string) => BLOCKED.some(b => d >= b.date && d <= (b.to || b.date))
+/** Blocked spans that touch [from, to] */
+export const blockedIn = (from: string, to: string) => BLOCKED.filter(b => b.date <= to && (b.to || b.date) >= from)
 
 const pad = (n: number) => String(n).padStart(2, '0')
 export const ymd = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
@@ -46,9 +53,11 @@ export type Weekend = {
   from: string
   to: string
   isFinal: boolean
+  /** Both days blocked (e.g. away) */
+  away: boolean
 }
 
-/** Weekends left before the first function, each with the span of days it covers. */
+/** Weekends left until planning ends, each with the span of days it covers. */
 export function weekendsLeft(today = todayIST()): Weekend[] {
   const weekends: Weekend[] = []
   // first Saturday on or after today (a Sunday today still counts as this weekend)
@@ -57,7 +66,7 @@ export function weekendsLeft(today = todayIST()): Weekend[] {
   if (dow === 0) sat = addDays(today, -1)
   else sat = addDays(today, (6 - dow + 7) % 7)
   let prevSun = addDays(today, -1)
-  while (sat < FIRST_FUNCTION_DAY) {
+  while (sat < PLAN_END) {
     const sun = addDays(sat, 1)
     const span = [addDays(sat, -1), sat, sun, addDays(sun, 1)]
     weekends.push({
@@ -66,7 +75,8 @@ export function weekendsLeft(today = todayIST()): Weekend[] {
       extra: HOLIDAYS.filter(h => span.includes(h.date)),
       from: addDays(prevSun, 1),
       to: sun,
-      isFinal: false
+      isFinal: false,
+      away: blockedOn(sat) && blockedOn(sun)
     })
     prevSun = sun
     sat = addDays(sat, 7)
@@ -75,25 +85,33 @@ export function weekendsLeft(today = todayIST()): Weekend[] {
   return weekends
 }
 
-/** Days left, weekend days, holidays and working days until the wedding. */
+/**
+ * Days to the wedding, and for planning (until PLAN_END, leaving out blocked days): weekends
+ * free, holidays, and working days.
+ */
 export function timeLeft(today = todayIST()) {
   const days = Math.max(0, dayDiff(today, WEDDING_DAY))
+  const planDays = Math.max(0, dayDiff(today, PLAN_END) + 1)
   let weekendDays = 0
-  for (let i = 0; i < days; i++) {
-    const dow = at(addDays(today, i)).getUTCDay()
+  let workingDays = 0
+  for (let i = 0; i < planDays; i++) {
+    const d = addDays(today, i)
+    if (blockedOn(d)) continue
+    const dow = at(d).getUTCDay()
     if (dow === 0 || dow === 6) weekendDays++
+    else if (!HOLIDAYS.some(h => h.date === d)) workingDays++
   }
-  const holidays = HOLIDAYS.filter(h => h.date >= today && h.date < WEDDING_DAY)
-  const weekdayHolidays = holidays.filter(h => ![0, 6].includes(at(h.date).getUTCDay())).length
-  const blocked = BLOCKED.filter(b => b.date >= today && b.date < WEDDING_DAY)
+  const holidays = HOLIDAYS.filter(h => h.date >= today && h.date <= PLAN_END)
+  const blocked = BLOCKED.filter(b => (b.to || b.date) >= today && b.date <= PLAN_END)
+  const weekends = weekendsLeft(today)
   return {
     days,
-    weeks: Math.floor(days / 7),
-    weekends: weekendsLeft(today).length,
+    planDays,
+    weekends: weekends.filter(w => !w.away).length,
     weekendDays,
     holidays,
     blocked,
-    workingDays: Math.max(0, days - weekendDays - weekdayHolidays)
+    workingDays
   }
 }
 
@@ -103,6 +121,11 @@ export function weekendLabel(w: Weekend) {
   const e = at(w.sun)
   const m = (d: Date) => d.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })
   return `Sat ${s.getUTCDate()}${m(s) === m(e) ? '' : ` ${m(s)}`} – Sun ${e.getUTCDate()} ${m(e)}`
+}
+
+/** "Sat 28 Nov – Wed 2 Dec" or a single day */
+export function blockedLabel(b: Blocked) {
+  return b.to ? `${shortDay(b.date)} – ${shortDay(b.to)}` : shortDay(b.date)
 }
 
 export function shortDay(s: string) {

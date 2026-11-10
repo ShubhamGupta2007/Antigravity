@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { BLOCKED, HOLIDAYS, shortDay, timeLeft, todayIST, weekendLabel, weekendsLeft } from '@/lib/planCalendar'
+import { blockedIn, blockedLabel, HOLIDAYS, PLAN_END, shortDay, timeLeft, todayIST, weekendLabel, weekendsLeft } from '@/lib/planCalendar'
 
 export type PlannerTask = { id: string; title: string; deadline: string | null; priority_tier: string; status: string }
 
@@ -21,14 +21,15 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
   const open = tasks.filter(x => x.status !== 'done' && x.deadline)
   const overdue = open.filter(x => x.deadline!.slice(0, 10) < today).sort((a, b) => a.deadline!.localeCompare(b.deadline!))
   const noDate = tasks.filter(x => x.status !== 'done' && !x.deadline).length
+  const later = open.filter(x => x.deadline!.slice(0, 10) > PLAN_END).sort((a, b) => a.deadline!.localeCompare(b.deadline!))
 
   return (
     <section className="mt-10 w-full">
       {/* Time left */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          { v: t.days, l: 'days left' },
-          { v: t.weekends, l: t.weekends === 1 ? 'weekend left' : 'weekends left' },
+          { v: t.days, l: 'days to the wedding' },
+          { v: t.weekends, l: t.weekends === 1 ? 'free weekend' : 'free weekends' },
           { v: t.holidays.length, l: t.holidays.length === 1 ? 'holiday' : 'holidays' },
           { v: t.workingDays, l: 'working days' }
         ].map(x => (
@@ -41,7 +42,7 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
       {(t.holidays.length > 0 || t.blocked.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 font-data text-[11px]">
           {t.holidays.map(h => <span key={h.date} className="rounded-full bg-mehendi/10 px-2.5 py-1 text-mehendi">🎉 {shortDay(h.date)} · {h.label}</span>)}
-          {t.blocked.map(b => <span key={b.date} className="rounded-full bg-rust-red/10 px-2.5 py-1 text-rust-red">🚫 {shortDay(b.date)} · {b.label}</span>)}
+          {t.blocked.map(b => <span key={b.date} className="rounded-full bg-rust-red/10 px-2.5 py-1 text-rust-red">🚫 {blockedLabel(b)} · {b.label}</span>)}
         </div>
       )}
 
@@ -51,7 +52,7 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
         <Link href="/tasks/add" className="font-data text-xs font-semibold text-maroon underline decoration-marigold/50 underline-offset-4">+ Add a task</Link>
       </div>
       <p className="mt-1 font-data text-xs text-maroon/60">
-        Every open task sits under the weekend it has to be done by.{noDate > 0 ? ` ${noDate} task${noDate === 1 ? ' has' : 's have'} no date yet.` : ''}
+        Planning runs till Sun 10 Jan; after that we manage on the days. Every open task sits under the weekend it has to be done by.{noDate > 0 ? ` ${noDate} task${noDate === 1 ? ' has' : 's have'} no date yet.` : ''}
       </p>
 
       {overdue.length > 0 && (
@@ -75,8 +76,8 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
             .filter(x => { const d = x.deadline!.slice(0, 10); return d >= w.from && d <= w.to && d >= today })
             .sort((a, b) => a.deadline!.localeCompare(b.deadline!))
           const notes = [
-            ...HOLIDAYS.filter(h => h.date >= w.from && h.date <= w.to).map(h => ({ ...h, kind: 'holiday' as const })),
-            ...BLOCKED.filter(b => b.date >= w.from && b.date <= w.to).map(b => ({ ...b, kind: 'blocked' as const }))
+            ...HOLIDAYS.filter(h => h.date >= w.from && h.date <= w.to).map(h => ({ key: h.date, text: `${shortDay(h.date)} · ${h.label}`, kind: 'holiday' as const })),
+            ...blockedIn(w.from, w.to).map(b => ({ key: b.date, text: `${blockedLabel(b)} · ${b.label}`, kind: 'blocked' as const }))
           ]
           const long = w.extra.some(h => h.date < w.sat || h.date > w.sun)
           return (
@@ -90,21 +91,22 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
                   </p>
                   <div className="flex flex-wrap gap-1 font-data text-[10px] font-bold">
                     {long && <span className="rounded-full bg-mehendi/15 px-2 py-0.5 text-mehendi">Long weekend</span>}
-                    {w.isFinal && <span className="rounded-full bg-maroon px-2 py-0.5 text-ivory">Last one · Engagement Sunday</span>}
+                    {w.away && <span className="rounded-full bg-rust-red/15 px-2 py-0.5 text-rust-red">Away</span>}
+                    {w.isFinal && <span className="rounded-full bg-maroon px-2 py-0.5 text-ivory">Last planning weekend</span>}
                     {due.length > 0 && <span className="rounded-full bg-marigold/20 px-2 py-0.5 text-maroon">{due.length} to do</span>}
                   </div>
                 </div>
                 {notes.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5 font-data text-[11px]">
                     {notes.map(n => (
-                      <span key={n.date} className={n.kind === 'holiday' ? 'text-mehendi' : 'font-semibold text-rust-red'}>
-                        {n.kind === 'holiday' ? '🎉' : '🚫'} {shortDay(n.date)} · {n.label}
+                      <span key={n.key} className={n.kind === 'holiday' ? 'text-mehendi' : 'font-semibold text-rust-red'}>
+                        {n.kind === 'holiday' ? '🎉' : '🚫'} {n.text}
                       </span>
                     ))}
                   </div>
                 )}
                 {due.length === 0 ? (
-                  <p className="mt-2 font-data text-xs italic text-maroon/40">Nothing due. A free weekend.</p>
+                  <p className="mt-2 font-data text-xs italic text-maroon/40">{w.away ? 'Nothing planned. Enjoy the wedding!' : 'Nothing due. A free weekend.'}</p>
                 ) : (
                   <ul className="mt-2.5 space-y-1.5">
                     {due.map(x => (
@@ -121,6 +123,21 @@ export default function WeekendPlanner({ tasks }: { tasks: PlannerTask[] }) {
           )
         })}
       </ol>
+      {later.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-marigold/30 bg-white p-4">
+          <p className="font-data text-xs font-bold uppercase tracking-wide text-maroon/60">After 10 Jan · {later.length}</p>
+          <p className="mt-0.5 font-data text-[11px] text-maroon/50">Planning ends on 10 Jan; move these earlier or handle them on the days.</p>
+          <ul className="mt-2 space-y-1.5">
+            {later.map(x => (
+              <li key={x.id} className="flex items-center gap-2 font-data text-sm text-maroon">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[x.priority_tier] || 'bg-maroon/30'}`} />
+                <span className="min-w-0 flex-1 truncate">{x.title}</span>
+                <span className="shrink-0 text-[11px] text-maroon/50">{shortDay(x.deadline!.slice(0, 10))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="mt-3 font-data text-[10px] text-maroon/40">Holidays from published 2026–27 lists; festival dates can shift by a day.</p>
     </section>
   )
