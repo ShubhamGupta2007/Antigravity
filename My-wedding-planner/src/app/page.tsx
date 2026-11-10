@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { SignOutButton } from '@/components/SignOutButton'
 import { WeddingCountdown } from '@/components/WeddingCountdown'
+import WeekendPlanner, { type PlannerTask } from '@/components/WeekendPlanner'
 import { Users, Wallet, CalendarHeart, ListTodo, Bell, Image as ImageIcon } from 'lucide-react'
 
 // Hardcoded wedding date: Jan 19, 2027
@@ -30,6 +31,11 @@ export default async function Home() {
   const cookieStore = await cookies()
   const guestView = cookieStore.get('guest_view')?.value === '1'
   const isEffectivelyGuest = dbUser?.role === 'guest' || dbUser?.role === 'pending' || guestView
+
+  // Open tasks for the weekend planner (family members, not guests)
+  const { data: planTasks } = !isEffectivelyGuest && dbUser?.role !== 'pending' && dbUser?.role !== 'denied'
+    ? await supabase.from('tasks').select('id, title, deadline, priority_tier, status').neq('status', 'done')
+    : { data: [] }
 
   const features = [
     ...((isAdmin || isPlanner) && !isEffectivelyGuest ? [
@@ -127,6 +133,8 @@ export default async function Home() {
             </h2>
             <WeddingCountdown targetDate={WEDDING_DATE} />
           </section>
+
+          {!isEffectivelyGuest && <WeekendPlanner tasks={(planTasks || []) as PlannerTask[]} />}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12 md:mt-16 w-full">
             {/* Left Column (Features) */}

@@ -21,6 +21,7 @@ here. Run the scripts below **once each, in order**, in the Supabase SQL editor
 | `19_estimated_guests.sql` | estimated guests not on the guest list, for big functions |
 | `20_dress_themes.sql` | colour theme per function on the invitation: theme name and style (Indian, Western…) |
 | `21_open_invitation.sql` | one general invitation link for our side (people not on the guest list), with a reply inbox |
+| `22_wedding_plan_tasks.sql` | the wedding plan as dated tasks (shopping, car, cards, gifts, bhaji, decor, parlour, mehendi…) |
 
 Deploy the app code only after the scripts it needs have been run; the pages show a
 "Database update needed" message otherwise.
