@@ -94,9 +94,14 @@ export default async function GuestsPage() {
             <Link href="/" aria-label="Back to home" className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20">
               <ArrowLeft className="h-4 w-4" />
             </Link>
-            <Link href="/guests/analytics" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold hover:bg-white/20">
-              📊 Analytics
-            </Link>
+            <div className="flex gap-1.5">
+              <Link href="/guests/general-invite" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold hover:bg-white/20">
+                🔗 General invite
+              </Link>
+              <Link href="/guests/analytics" className="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[11px] font-semibold hover:bg-white/20">
+                📊 Analytics
+              </Link>
+            </div>
           </div>
           <h1 className="mt-4 font-display text-4xl font-bold text-[#F2C46D] sm:text-5xl">Guest list</h1>
           <p className="mt-1 font-data text-[13px] text-white/80">

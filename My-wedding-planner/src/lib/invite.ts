@@ -198,3 +198,35 @@ export function whatsappUrl(text: string, phone?: string | null) {
   if (digits.length === 11 && digits.startsWith('0')) digits = `91${digits.slice(1)}`
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
 }
+
+// ---------------------------------------------------------------------------
+// General invitation (one link for people not on the guest list; 21_open_invitation.sql)
+// ---------------------------------------------------------------------------
+
+export type OpenFunction = Omit<InviteFunction, 'rsvp' | 'dress_code'>
+
+export type OpenInvitation = {
+  status: 'ok'
+  side: 'groom' | 'bride'
+  settings: InviteSettings & { open_invite_side?: string }
+  functions: OpenFunction[]
+}
+
+export type OpenRsvpPayload = {
+  name: string
+  phone: string
+  attending: boolean
+  function_ids: string[]
+  people: number
+  kids: number
+  needs_help: boolean
+  message: string
+}
+
+/** Very light tint of a colour, for a celebration's background band. */
+export function tint(hex: string | null | undefined, amount = 0.86) {
+  if (!hex || !/^#?[0-9a-f]{6}$/i.test(hex.replace('#', ''))) return '#FFF8EE'
+  const n = parseInt(hex.replace('#', ''), 16)
+  const mix = (c: number) => Math.round(c + (255 - c) * amount)
+  return `rgb(${mix((n >> 16) & 255)}, ${mix((n >> 8) & 255)}, ${mix(n & 255)})`
+}
